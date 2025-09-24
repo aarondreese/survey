@@ -19,7 +19,7 @@ export default function Home() {
         </div>
 
         {/* Navigation Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           <Link href="/survey" className="group">
             <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6 border border-gray-200 group-hover:border-blue-300">
               <div className="flex items-center mb-4">
@@ -31,6 +31,22 @@ export default function Home() {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600">Take Survey</h3>
                   <p className="text-sm text-gray-600">Complete the customer feedback survey</p>
+                </div>
+              </div>
+            </div>
+          </Link>
+
+          <Link href="/surveys" className="group">
+            <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6 border border-gray-200 group-hover:border-orange-300">
+              <div className="flex items-center mb-4">
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-4">
+                  <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 group-hover:text-orange-600">Survey Templates</h3>
+                  <p className="text-sm text-gray-600">Manage survey templates and configurations</p>
                 </div>
               </div>
             </div>
