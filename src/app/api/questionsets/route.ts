@@ -1,40 +1,63 @@
 import { NextResponse } from "next/server";
-
-// Mock data - replace with your actual database queries
-const mockQuestionSets = [
-  {
-    id: 1,
-    name: "Customer Satisfaction Survey",
-    description: "Standard customer satisfaction questions",
-    createdDate: "2025-01-15T10:00:00Z",
-    isActive: true
-  },
-  {
-    id: 2,
-    name: "Property Inspection Checklist",
-    description: "Comprehensive property inspection questions",
-    createdDate: "2025-02-01T14:30:00Z",
-    isActive: true
-  },
-  {
-    id: 3,
-    name: "Solar System Assessment",
-    description: "Solar system evaluation questions",
-    createdDate: "2025-02-10T09:15:00Z",
-    isActive: true
-  }
-];
+import { QuestionSetService } from "@/services/questionSetService";
+import { CreateQuestionSetRequest, ApiResponse } from "@/types/database";
 
 export async function GET() {
   try {
-    // Replace this with your actual database query
-    // Example: const questionSets = await db.questionSetHeader.findMany();
+    const questionSets = await QuestionSetService.getAll();
     
-    return NextResponse.json(mockQuestionSets);
+    const response: ApiResponse = {
+      success: true,
+      data: questionSets
+    };
+    
+    return NextResponse.json(response.data);
   } catch (error) {
     console.error("Error fetching question sets:", error);
     return NextResponse.json(
       { error: "Failed to fetch question sets" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body: CreateQuestionSetRequest = await request.json();
+    
+    console.log('POST /api/questionsets - Request body:', body);
+    
+    // Validate required fields
+    if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
+      console.error('Validation failed: Name is required');
+      return NextResponse.json(
+        { error: "Name is required and must be a non-empty string" },
+        { status: 400 }
+      );
+    }
+
+    // Create new question set using service
+    console.log('Creating question set with data:', body);
+    const newQuestionSet = await QuestionSetService.create(body);
+    console.log('Question set created successfully:', newQuestionSet);
+    
+    const response: ApiResponse = {
+      success: true,
+      data: newQuestionSet
+    };
+
+    return NextResponse.json(response, { status: 201 });
+  } catch (error) {
+    console.error("Error creating question set:", error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    return NextResponse.json(
+      { 
+        error: "Failed to create question set",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
