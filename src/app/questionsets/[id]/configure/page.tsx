@@ -13,6 +13,27 @@ interface QuestionSetHeader {
   sourceViewName?: string;
 }
 
+interface QuestionSetQuestion {
+  id: number;
+  questionSetHeaderId: number;
+  fieldName: string;
+  attributeLabel: string;
+  surveyLabel: string;
+  displayType: string;
+  choices?: string;
+  description?: string;
+  placeholder?: string;
+  minValue?: number;
+  maxValue?: number;
+  colCount?: number;
+  isReadOnly: boolean;
+  isVisible: boolean;
+  isRequired: boolean;
+  isBlind: boolean;
+  minIsCurrent: boolean;
+  sortOrder: number;
+}
+
 interface QuestionConfig {
   fieldName: string;
   attributeLabel: string;
@@ -32,6 +53,8 @@ interface QuestionConfig {
   sortOrder: number;
   // UI state
   isEnabled: boolean;
+  isNewlyAdded?: boolean; // Flag for fields that exist in source but not in saved questions
+  isOrphaned?: boolean; // Flag for fields that exist in saved questions but not in source view
 }
 
 const displayTypeOptions = [
@@ -67,58 +90,112 @@ export default function ConfigureQuestionsPage() {
 
 
 
-  const initializeQuestionConfigsFromData = useCallback((records: Record<string, unknown>[]) => {
-    if (records.length === 0) {
-      setQuestionConfigs([]);
-      return;
+  const createConfigFromSourceRecord = useCallback((record: Record<string, unknown>, index: number): QuestionConfig => {
+    // Use the 'Label' column for attribute label
+    const attributeLabel = String(record.Label || record.label || `Label_${index + 1}`);
+    const fieldName = String(record.fieldName || record.FieldName || record.field_name || attributeLabel);
+    
+    const options = String(record.options || record.Options || '');
+    const hasOptions = options && options.trim() !== '';
+    
+    // Infer display type from field name (remove digits from end)
+    const fieldNameBase = fieldName.replace(/\d+$/, '').toLowerCase();
+    
+    let defaultDisplayType = 'text';
+    if (hasOptions) {
+      defaultDisplayType = 'dropdown'; // Default to dropdown for lookup fields
+    } else if (fieldNameBase.includes('date') || fieldNameBase === 'date') {
+      defaultDisplayType = 'date';
+    } else if (fieldNameBase.includes('text') || fieldNameBase.includes('comment') || fieldNameBase.includes('note')) {
+      defaultDisplayType = 'textarea';
+    } else if (fieldNameBase.includes('number') || fieldNameBase.includes('num') || fieldNameBase.includes('count')) {
+      defaultDisplayType = 'number';
+    } else if (fieldNameBase.includes('check') || fieldNameBase.includes('bool') || fieldNameBase.includes('flag')) {
+      defaultDisplayType = 'checkbox';
+    } else {
+      defaultDisplayType = 'text'; // Default fallback
     }
-
-    // Create question configs from the data records
-    const configs: QuestionConfig[] = records.map((record, index) => {
-      // Use the 'Label' column for attribute label
-      const attributeLabel = String(record.Label || record.label || `Label_${index + 1}`);
-      const fieldName = String(record.fieldName || record.FieldName || record.field_name || attributeLabel);
-      
-      const options = String(record.options || record.Options || '');
-      const hasOptions = options && options.trim() !== '';
-      
-      // Infer display type from field name (remove digits from end)
-      const fieldNameBase = fieldName.replace(/\d+$/, '').toLowerCase();
-      
-      let defaultDisplayType = 'text';
-      if (hasOptions) {
-        defaultDisplayType = 'dropdown'; // Default to dropdown for lookup fields
-      } else if (fieldNameBase.includes('date') || fieldNameBase === 'date') {
-        defaultDisplayType = 'date';
-      } else if (fieldNameBase.includes('text') || fieldNameBase.includes('comment') || fieldNameBase.includes('note')) {
-        defaultDisplayType = 'textarea';
-      } else if (fieldNameBase.includes('number') || fieldNameBase.includes('num') || fieldNameBase.includes('count')) {
-        defaultDisplayType = 'number';
-      } else if (fieldNameBase.includes('check') || fieldNameBase.includes('bool') || fieldNameBase.includes('flag')) {
-        defaultDisplayType = 'checkbox';
-      } else {
-        defaultDisplayType = 'text'; // Default fallback
-      }
-      
-      return {
-        fieldName: fieldName,
-        attributeLabel: attributeLabel,
-        surveyLabel: attributeLabel,
-        displayType: defaultDisplayType,
-        options: options, // Get options from the data record
-        description: String(record.description || ''),
-        placeholder: `Enter ${attributeLabel.toLowerCase()}`,
-        isReadOnly: false,
-        isVisible: true,
-        isRequired: false,
-        isBlind: false,
-        minIsCurrent: false,
-        sortOrder: index + 1,
-        isEnabled: true
-      };
-    });
-    setQuestionConfigs(configs);
+    
+    return {
+      fieldName: fieldName,
+      attributeLabel: attributeLabel,
+      surveyLabel: attributeLabel,
+      displayType: defaultDisplayType,
+      options: options, // Get options from the data record
+      description: String(record.description || ''),
+      placeholder: `Enter ${attributeLabel.toLowerCase()}`,
+      isReadOnly: false,
+      isVisible: true,
+      isRequired: false,
+      isBlind: false,
+      minIsCurrent: false,
+      sortOrder: index + 1,
+      isEnabled: true
+    };
   }, []);
+
+  const mergeQuestionsWithSourceData = useCallback((
+    existingQuestions: QuestionSetQuestion[],
+    sourceRecords: Record<string, unknown>[]
+  ): QuestionConfig[] => {
+    const configs: QuestionConfig[] = [];
+    const existingFieldNames = new Set(existingQuestions.map(q => q.fieldName));
+    
+    // Create a set of field names from source records for comparison
+    const sourceFieldNames = new Set(
+      sourceRecords.map(record => 
+        String(record.fieldName || record.FieldName || record.field_name || record.Label || record.label || '')
+      ).filter(name => name !== '')
+    );
+    
+    // First, add all existing questions (preserve their configuration)
+    existingQuestions.forEach((question) => {
+      const isOrphaned = !sourceFieldNames.has(question.fieldName);
+      
+      configs.push({
+        fieldName: question.fieldName,
+        attributeLabel: question.attributeLabel,
+        surveyLabel: question.surveyLabel,
+        displayType: question.displayType,
+        options: question.choices || '',
+        description: question.description || '',
+        placeholder: question.placeholder || '',
+        minValue: question.minValue,
+        maxValue: question.maxValue,
+        colCount: question.colCount,
+        isReadOnly: question.isReadOnly,
+        isVisible: question.isVisible,
+        isRequired: question.isRequired,
+        isBlind: question.isBlind,
+        minIsCurrent: question.minIsCurrent,
+        sortOrder: question.sortOrder,
+        isEnabled: !isOrphaned, // Orphaned questions are disabled by default
+        isNewlyAdded: false,
+        isOrphaned: isOrphaned
+      });
+    });
+
+    // Then, add any new fields from source view that don't exist in saved questions
+    sourceRecords.forEach((record, index) => {
+      const fieldName = String(record.fieldName || record.FieldName || record.field_name || record.Label || record.label || `Field_${index + 1}`);
+      
+      if (!existingFieldNames.has(fieldName)) {
+        const newConfig = createConfigFromSourceRecord(record, configs.length);
+        newConfig.isEnabled = false; // New fields are disabled by default
+        newConfig.isNewlyAdded = true; // Flag as newly added
+        newConfig.isOrphaned = false;
+        newConfig.sortOrder = configs.length + 1; // Add at the end
+        configs.push(newConfig);
+      }
+    });
+
+    // Sort by sortOrder, but put orphaned questions at the end
+    return configs.sort((a, b) => {
+      if (a.isOrphaned && !b.isOrphaned) return 1;
+      if (!a.isOrphaned && b.isOrphaned) return -1;
+      return a.sortOrder - b.sortOrder;
+    });
+  }, [createConfigFromSourceRecord]);
 
   const fetchQuestionSetAndData = useCallback(async () => {
     try {
@@ -132,25 +209,39 @@ export default function ConfigureQuestionsPage() {
       const questionSetData = await questionSetResponse.json();
       setQuestionSet(questionSetData.data);
 
-      // Fetch data records from the source view
+      let existingQuestions: QuestionSetQuestion[] = [];
+      let sourceViewData: Record<string, unknown>[] = [];
+
+      // Fetch existing questions (if any)
+      const existingQuestionsResponse = await fetch(`/api/questionset-questions/${questionSetId}`);
+      if (existingQuestionsResponse.ok) {
+        const existingQuestionsData = await existingQuestionsResponse.json();
+        if (existingQuestionsData.data) {
+          existingQuestions = existingQuestionsData.data;
+        }
+      }
+
+      // Fetch current source view data to get all available fields
       if (questionSetData.data.sourceViewName) {
         const dataResponse = await fetch(
           `/api/database-data?viewName=${encodeURIComponent(questionSetData.data.sourceViewName)}`
         );
-        if (!dataResponse.ok) {
-          throw new Error('Failed to fetch view data');
+        if (dataResponse.ok) {
+          const dataResult = await dataResponse.json();
+          sourceViewData = dataResult.records || [];
         }
-        const dataResult = await dataResponse.json();
-
-        // Initialize question configurations based on data records
-        initializeQuestionConfigsFromData(dataResult.records || []);
       }
+
+      // Merge existing questions with source view data
+      const mergedConfigs = mergeQuestionsWithSourceData(existingQuestions, sourceViewData);
+      setQuestionConfigs(mergedConfigs);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [questionSetId, initializeQuestionConfigsFromData]);
+  }, [questionSetId, mergeQuestionsWithSourceData]);
 
   useEffect(() => {
     fetchQuestionSetAndData();
@@ -427,6 +518,16 @@ export default function ConfigureQuestionsPage() {
               }`}>
                 {questionConfigs.filter(q => q.isEnabled).length} of {questionConfigs.length} fields enabled
               </div>
+              {questionConfigs.filter(q => q.isNewlyAdded).length > 0 && (
+                <div className="text-xs text-yellow-700 bg-yellow-100 px-2 py-1 rounded">
+                  {questionConfigs.filter(q => q.isNewlyAdded).length} new field{questionConfigs.filter(q => q.isNewlyAdded).length !== 1 ? 's' : ''} available
+                </div>
+              )}
+              {questionConfigs.filter(q => q.isOrphaned).length > 0 && (
+                <div className="text-xs text-red-700 bg-red-100 px-2 py-1 rounded">
+                  {questionConfigs.filter(q => q.isOrphaned).length} removed field{questionConfigs.filter(q => q.isOrphaned).length !== 1 ? 's' : ''} (will be deleted)
+                </div>
+              )}
               {questionConfigs.filter(q => q.isEnabled).length === 0 && (
                 <div className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
                   At least 1 required
@@ -477,20 +578,22 @@ export default function ConfigureQuestionsPage() {
               const choiceValues = parseOptions(config.options);
               
               return (
-                <div key={config.fieldName} className={`${!config.isEnabled ? 'bg-gray-50' : ''} ${draggedIndex === index ? 'opacity-50' : ''}`}>
+                <div key={config.fieldName} className={`${!config.isEnabled ? 'bg-gray-50' : ''} ${config.isNewlyAdded ? 'bg-yellow-50 border-l-4 border-yellow-400' : ''} ${config.isOrphaned ? 'bg-red-50 border-l-4 border-red-400' : ''} ${draggedIndex === index ? 'opacity-50' : ''}`}>
                   {/* Main row */}
                   <div 
-                    className={`flex items-center py-3 gap-4 px-6 hover:bg-gray-50 cursor-move`}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, index)}
-                    onDragEnd={handleDragEnd}
+                    className={`flex items-center py-3 gap-4 px-6 hover:bg-gray-50`}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, index)}
                   >
                 {/* Drag handle */}
                 <div className="w-8 flex-shrink-0 flex items-center justify-center">
-                  <div className="flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600">
+                  <div 
+                    className="flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-move"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragEnd={handleDragEnd}
+                  >
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
                     </svg>
@@ -506,15 +609,38 @@ export default function ConfigureQuestionsPage() {
                 
                 {/* Field name */}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 bg-gray-100 px-2 py-1 rounded truncate">
+                  <div className={`text-sm font-medium px-2 py-1 rounded truncate flex items-center gap-2 ${
+                    config.isNewlyAdded 
+                      ? 'bg-yellow-100 text-yellow-800' 
+                      : config.isOrphaned 
+                        ? 'bg-red-100 text-red-800' 
+                        : 'text-gray-900 bg-gray-100'
+                  }`}>
                     {config.fieldName}
+                    {config.isNewlyAdded && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-200 text-yellow-800">
+                        NEW
+                      </span>
+                    )}
+                    {config.isOrphaned && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-200 text-red-800">
+                        REMOVED
+                      </span>
+                    )}
                   </div>
                 </div>
                 
                 {/* Attribute label */}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-600 truncate">
+                  <div className={`text-sm truncate ${
+                    config.isOrphaned ? 'text-red-600' : 'text-gray-600'
+                  }`}>
                     {config.attributeLabel}
+                    {config.isOrphaned && (
+                      <div className="text-xs text-red-500 italic mt-1">
+                        Field no longer exists in source view
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -574,19 +700,25 @@ export default function ConfigureQuestionsPage() {
                 <div className="w-48 flex-shrink-0">
                   <div className="space-y-2">
                       <button
-                        onClick={() => updateQuestionConfig(index, 'isEnabled', !config.isEnabled)}
-                        className="flex items-center hover:bg-gray-100 p-1 rounded transition-colors text-xs w-full"
+                        onClick={() => !config.isOrphaned && updateQuestionConfig(index, 'isEnabled', !config.isEnabled)}
+                        disabled={config.isOrphaned}
+                        className={`flex items-center p-1 rounded transition-colors text-xs w-full ${
+                          config.isOrphaned 
+                            ? 'cursor-not-allowed opacity-50' 
+                            : 'hover:bg-gray-100 cursor-pointer'
+                        }`}
+                        title={config.isOrphaned ? 'Cannot enable - field no longer exists in source view' : ''}
                       >
                         {config.isEnabled ? (
                           <svg className="w-4 h-4 text-green-600 mr-1" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                           </svg>
                         ) : (
-                          <svg className="w-4 h-4 text-red-600 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                          <svg className={`w-4 h-4 mr-1 ${config.isOrphaned ? 'text-red-400' : 'text-red-600'}`} fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                           </svg>
                         )}
-                        Enabled
+                        {config.isOrphaned ? 'Will be deleted' : 'Enabled'}
                       </button>
                       
 

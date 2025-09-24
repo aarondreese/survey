@@ -177,31 +177,49 @@ export default function QuestionSetsPage() {
               {questionSets.map((questionSet) => (
                 <div
                   key={questionSet.id}
-                  className={`p-3 border rounded cursor-pointer hover:bg-gray-50 ${
+                  className={`p-3 border rounded hover:bg-gray-50 ${
                     selectedQuestionSet?.id === questionSet.id
                       ? "border-blue-500 bg-blue-50"
                       : "border-gray-200"
                   }`}
-                  onClick={() => handleQuestionSetSelect(questionSet)}
                 >
-                  <div className="font-medium">{questionSet.name}</div>
-                  {questionSet.description && (
-                    <div className="text-sm text-gray-600 mt-1">
-                      {questionSet.description}
+                  <div 
+                    className="cursor-pointer"
+                    onClick={() => handleQuestionSetSelect(questionSet)}
+                  >
+                    <div className="font-medium">{questionSet.name}</div>
+                    {questionSet.description && (
+                      <div className="text-sm text-gray-600 mt-1">
+                        {questionSet.description}
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500 mt-1">
+                      ID: {questionSet.id}
+                      {questionSet.subscript && (
+                        <span className="ml-2">
+                          Type: {questionSet.subscript}
+                        </span>
+                      )}
+                      {questionSet.sourceViewName && (
+                        <span className="ml-2">
+                          Source: {questionSet.sourceViewName}
+                        </span>
+                      )}
                     </div>
-                  )}
-                  <div className="text-xs text-gray-500 mt-1">
-                    ID: {questionSet.id}
-                    {questionSet.subscript && (
-                      <span className="ml-2">
-                        Type: {questionSet.subscript}
-                      </span>
-                    )}
-                    {questionSet.sourceViewName && (
-                      <span className="ml-2">
-                        Source: {questionSet.sourceViewName}
-                      </span>
-                    )}
+                  </div>
+                  
+                  {/* Action buttons */}
+                  <div className="flex justify-end gap-2 mt-3 pt-2 border-t border-gray-100">
+                    <Link
+                      href={`/questionsets/${questionSet.id}/configure`}
+                      className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit Questions
+                    </Link>
                   </div>
                 </div>
               ))}
