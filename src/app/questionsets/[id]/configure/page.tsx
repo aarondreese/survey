@@ -3,36 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { Survey } from "survey-react-ui";
+import { Model } from "survey-core";
+import "survey-core/survey-core.min.css";
+import { QuestionSetQuestion, QuestionSetHeader } from '@/types/database';
 
-
-
-interface QuestionSetHeader {
-  id: number;
-  name: string;
-  description?: string;
-  sourceViewName?: string;
-}
-
-interface QuestionSetQuestion {
-  id: number;
-  questionSetHeaderId: number;
-  fieldName: string;
-  attributeLabel: string;
-  surveyLabel: string;
-  displayType: string;
-  choices?: string;
-  description?: string;
-  placeholder?: string;
-  minValue?: number;
-  maxValue?: number;
-  colCount?: number;
-  isReadOnly: boolean;
-  isVisible: boolean;
-  isRequired: boolean;
-  isBlind: boolean;
-  minIsCurrent: boolean;
-  sortOrder: number;
-}
 
 interface QuestionConfig {
   fieldName: string;
@@ -57,18 +32,22 @@ interface QuestionConfig {
   isOrphaned?: boolean; // Flag for fields that exist in saved questions but not in source view
 }
 
-const displayTypeOptions = [
-  { value: 'text', label: 'Text Input' },
-  { value: 'textarea', label: 'Text Area' },
-  { value: 'number', label: 'Number' },
-  { value: 'dropdown', label: 'Dropdown' },
-  { value: 'radio', label: 'Radio Buttons' },
-  { value: 'checkbox', label: 'Checkbox' },
-  { value: 'date', label: 'Date' },
-  { value: 'email', label: 'Email' },
-  { value: 'phone', label: 'Phone' },
-  { value: 'url', label: 'URL' }
-];
+interface SurveyElement {
+  type: string;
+  name: string;
+  title: string;
+  isRequired?: boolean;
+  readOnly?: boolean;
+  placeholder?: string;
+  description?: string;
+  inputType?: string;
+  min?: number;
+  max?: number;
+  choices?: Array<{ value: number; text: string }>;
+  colCount?: number;
+}
+
+
 
 export default function ConfigureQuestionsPage() {
   const router = useRouter();
@@ -77,11 +56,14 @@ export default function ConfigureQuestionsPage() {
 
   const [questionSet, setQuestionSet] = useState<QuestionSetHeader | null>(null);
   const [questionConfigs, setQuestionConfigs] = useState<QuestionConfig[]>([]);
+  const [sourceViewData, setSourceViewData] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [isHeaderSticky, setIsHeaderSticky] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
+  const [showDebug, setShowDebug] = useState(false);
   
   const tableRef = useRef<HTMLTableElement>(null);
   const headerRef = useRef<HTMLTableSectionElement>(null);
@@ -152,12 +134,29 @@ export default function ConfigureQuestionsPage() {
     existingQuestions.forEach((question) => {
       const isOrphaned = !sourceFieldNames.has(question.fieldName);
       
+      // Find matching source record to get current options
+      const matchingSourceRecord = sourceRecords.find(record => {
+        const sourceFieldName = String(record.fieldName || record.FieldName || record.field_name || record.Label || record.label || '');
+        return sourceFieldName === question.fieldName;
+      });
+      
+      // Use options from source view if available, otherwise use saved choices
+      const currentOptions = matchingSourceRecord 
+        ? String(matchingSourceRecord.options || matchingSourceRecord.Options || '')
+        : question.choices || '';
+      
+      console.log(`Field ${question.fieldName} options:`, {
+        fromSourceView: matchingSourceRecord ? String(matchingSourceRecord.options || matchingSourceRecord.Options || '') : 'No match',
+        fromDatabase: question.choices || '',
+        finalOptions: currentOptions
+      });
+      
       configs.push({
         fieldName: question.fieldName,
         attributeLabel: question.attributeLabel,
         surveyLabel: question.surveyLabel,
         displayType: question.displayType,
-        options: question.choices || '',
+        options: currentOptions,
         description: question.description || '',
         placeholder: question.placeholder || '',
         minValue: question.minValue,
@@ -229,6 +228,7 @@ export default function ConfigureQuestionsPage() {
         if (dataResponse.ok) {
           const dataResult = await dataResponse.json();
           sourceViewData = dataResult.records || [];
+          setSourceViewData(sourceViewData); // Store for preview generation
         }
       }
 
@@ -287,23 +287,28 @@ export default function ConfigureQuestionsPage() {
 
   // Get available display type options based on field characteristics
   const getDisplayTypeOptions = (config: QuestionConfig) => {
-    const hasOptions = config.options && config.options.trim() !== '';
     // Parse field name (remove digits from end) to determine field type
     const fieldNameBase = config.fieldName.replace(/\d+$/, '').toLowerCase();
     const isDateField = fieldNameBase.includes('date') || fieldNameBase === 'date';
     
-    if (hasOptions) {
-      // Lookup fields: only dropdown and radio buttons
-      return allDisplayTypeOptions.filter(option => 
-        option.value === 'dropdown' || option.value === 'radio'
-      );
-    } else if (isDateField) {
-      // Date fields: only date type
+    // Date fields should always be restricted to date type only
+    if (isDateField) {
       return allDisplayTypeOptions.filter(option => option.value === 'date');
-    } else {
-      // Other fields: exclude dropdown and radio (since they need options)
+    }
+    
+    // Check if this field has choices available
+    const hasOptions = config.options && config.options.trim() !== '';
+    const hasChoicesFromView = getFieldOptionsFromView(config.fieldName).length > 0;
+    
+    // If field has choices (either from config options or source view), restrict to choice-based types
+    if (hasOptions || hasChoicesFromView) {
       return allDisplayTypeOptions.filter(option => 
-        option.value !== 'dropdown' && option.value !== 'radio'
+        option.value === 'dropdown' || option.value === 'radio' || option.value === 'checkbox'
+      );
+    } else {
+      // Other fields without choices: exclude dropdown, radio, and checkbox (since they need options)
+      return allDisplayTypeOptions.filter(option => 
+        option.value !== 'dropdown' && option.value !== 'radio' && option.value !== 'checkbox'
       );
     }
   };
@@ -342,6 +347,241 @@ export default function ConfigureQuestionsPage() {
     
     return [];
   };
+
+  // Parse options to get proper value-text pairs for SurveyJS
+  const parseChoicesForSurvey = useCallback((optionsJson: string | undefined): Array<{ value: string | number; text: string }> => {
+    if (!optionsJson || optionsJson.trim() === '') return [];
+    
+    try {
+      const parsed = JSON.parse(optionsJson);
+      
+      // Handle different possible structures
+      if (Array.isArray(parsed)) {
+        // Check if it's an array of objects with Text and Value properties (lookup group format)
+        const hasProperStructure = parsed.some(item => 
+          item && typeof item === 'object' && 'Text' in item
+        );
+        
+        if (hasProperStructure) {
+          return parsed
+            .filter(item => item && typeof item === 'object' && item.Text)
+            .map(item => ({
+              value: item.Value !== undefined ? item.Value : item.value !== undefined ? item.value : item.Text,
+              text: String(item.Text)
+            }));
+        }
+        
+        // If it's an array of strings, create value-text pairs
+        const stringValues = parsed.filter(item => typeof item === 'string');
+        return stringValues.map((text, index) => ({
+          value: index + 1,
+          text: text
+        }));
+      } else if (typeof parsed === 'object' && parsed !== null) {
+        // If it's an object, use keys as values and values as text
+        return Object.entries(parsed)
+          .filter(([, value]) => typeof value === 'string')
+          .map(([key, value]) => ({
+            value: key,
+            text: String(value)
+          }));
+      } else if (typeof parsed === 'string') {
+        // If it's just a string, return it as a single choice
+        return [{ value: 1, text: parsed }];
+      }
+    } catch {
+      // Invalid JSON, return empty array
+    }
+    
+    return [];
+  }, []);
+
+  // Get options from source view data for a specific field
+  const getFieldOptionsFromView = useCallback((fieldName: string): Array<{ value: string | number; text: string }> => {
+    console.log(`🔍 getFieldOptionsFromView called for field: "${fieldName}"`);
+    console.log(`sourceViewData length: ${sourceViewData?.length || 0}`);
+    
+    if (!sourceViewData || sourceViewData.length === 0) {
+      console.log('No source view data available');
+      return [];
+    }
+    
+    // First, check if we can find options in the existing question config for this field
+    const matchingConfig = questionConfigs.find(config => config.fieldName === fieldName);
+    console.log(`🔍 Debug for ${fieldName}:`, matchingConfig);
+    console.log(`🔍 matchingConfig.options:`, matchingConfig?.options);
+    console.log(`🔍 All properties:`, matchingConfig ? Object.keys(matchingConfig) : 'no config found');
+    console.log(`🔍 All values:`, matchingConfig ? Object.values(matchingConfig) : 'no values');
+    
+    if (matchingConfig && matchingConfig.options && matchingConfig.options.trim() !== '') {
+      console.log(`✅ Using options from question config for ${fieldName}:`, matchingConfig.options);
+      return parseChoicesForSurvey(matchingConfig.options);
+    }
+    
+    // Log the first few records to see what fields are available
+    console.log('First 2 records from source view data:');
+    sourceViewData.slice(0, 2).forEach((record, index) => {
+      console.log(`Record ${index}:`, record);
+      console.log(`Record ${index} Options:`, record.Options);
+      console.log(`Record ${index} options:`, record.options);
+    });
+    
+    // Look for a record that has Options defined (fallback for when config doesn't have options)
+    for (const record of sourceViewData) {
+      // Check if Options exists as an array
+      if (record.Options && Array.isArray(record.Options)) {
+        console.log(`Found Options array in record:`, record.Options);
+        
+        const options = (record.Options as Array<Record<string, unknown>>).map((option) => {
+          const value = option.value || option.Value || option.id || option.Id;
+          const text = option.text || option.Text || option.name || option.Name || String(value);
+          
+          return {
+            value: typeof value === 'string' || typeof value === 'number' ? value : String(value),
+            text: String(text)
+          };
+        });
+        
+        console.log(`✅ Processed ${options.length} fallback options for ${fieldName}:`, options);
+        return options;
+      }
+      
+      // Check lowercase options
+      if (record.options && Array.isArray(record.options)) {
+        console.log(`Found options array (lowercase) in record:`, record.options);
+        
+        const options = (record.options as Array<Record<string, unknown>>).map((option) => {
+          const value = option.value || option.Value || option.id || option.Id;
+          const text = option.text || option.Text || option.name || option.Name || String(value);
+          
+          return {
+            value: typeof value === 'string' || typeof value === 'number' ? value : String(value),
+            text: String(text)
+          };
+        });
+        
+        console.log(`✅ Processed ${options.length} fallback options (lowercase) for ${fieldName}:`, options);
+        return options;
+      }
+    }
+    
+    console.log(`❌ No options found for ${fieldName}`);
+    return [];
+  }, [sourceViewData, questionConfigs, parseChoicesForSurvey]);
+
+  // Convert question configurations to SurveyJS format
+  const generateSurveyPreview = useCallback(() => {
+    const enabledConfigs = questionConfigs.filter(config => config.isEnabled && config.isVisible && !config.isOrphaned);
+    
+    if (enabledConfigs.length === 0) {
+      return {
+        title: questionSet?.name || "Question Set Preview",
+        description: "No questions are currently enabled for this question set.",
+        pages: []
+      };
+    }
+
+    const elements = enabledConfigs
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(config => {
+        const element: SurveyElement = {
+          type: config.displayType,
+          name: config.fieldName,
+          title: config.surveyLabel || config.attributeLabel,
+          isRequired: !!config.isRequired
+        };
+
+        // Only set readOnly property if it's true (when false, omit the property entirely)
+        if (config.isReadOnly) {
+          element.readOnly = true;
+        }
+
+        // Add placeholder if provided
+        if (config.placeholder) {
+          element.placeholder = config.placeholder;
+        }
+
+        // Add description if provided
+        if (config.description) {
+          element.description = config.description;
+        }
+
+        // Handle different display types
+        switch (config.displayType) {
+          case 'text':
+            element.type = 'text';
+            element.inputType = 'text';
+            break;
+          case 'textarea':
+            element.type = 'comment';
+            break;
+          case 'number':
+            element.type = 'text';
+            element.inputType = 'number';
+            if (config.minValue !== undefined) element.min = config.minValue;
+            if (config.maxValue !== undefined) element.max = config.maxValue;
+            break;
+          case 'date':
+            element.type = 'text';
+            element.inputType = 'date';
+            break;
+          case 'dropdown':
+          case 'radio':
+          case 'checkbox':
+            // For dropdown fields, get options from the source view data
+            let choices: Array<{ value: string | number; text: string }> = [];
+            if (config.displayType === 'dropdown') {
+              choices = getFieldOptionsFromView(config.fieldName);
+              console.log(`Dropdown field ${config.fieldName}: found ${choices.length} choices`, choices);
+              
+              // If no choices found, add some debug info to the element
+              if (choices.length === 0) {
+                console.warn(`No choices found for dropdown field: ${config.fieldName}`);
+                console.log('Config object:', config);
+                console.log('Source view data sample:', sourceViewData.slice(0, 2));
+              }
+            } else {
+              // For radio/checkbox, use the configured options
+              choices = parseChoicesForSurvey(config.options);
+            }
+            
+            if (choices.length > 0) {
+              Object.assign(element, { choices });
+            } else if (config.displayType === 'dropdown') {
+              // For debugging: add a note that choices are missing
+              element.description = (element.description || '') + ' [DEBUG: No choices found - check console]';
+            }
+            
+            if (config.displayType === 'dropdown') {
+              element.type = 'dropdown';
+            } else if (config.displayType === 'radio') {
+              element.type = 'radiogroup';
+            } else if (config.displayType === 'checkbox') {
+              element.type = 'checkbox';
+            }
+            break;
+        }
+
+        // Handle column count for radiogroups
+        if (config.colCount && (config.displayType === 'radio' || element.type === 'radiogroup')) {
+          element.colCount = config.colCount;
+        }
+
+        return element;
+      });
+
+    return {
+      title: questionSet?.name || "Question Set Preview",
+      description: questionSet?.description || "Preview of how this question set will appear in the survey",
+      pages: [{
+        name: "preview_page",
+        elements: elements
+      }]
+    };
+  }, [questionConfigs, questionSet, getFieldOptionsFromView, sourceViewData, parseChoicesForSurvey]);
+
+  // Generate survey JSON for preview
+  const previewSurveyJson = generateSurveyPreview();
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
     setDraggedIndex(index);
@@ -834,6 +1074,92 @@ export default function ConfigureQuestionsPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Survey Preview Panel */}
+      <div className="mt-6 bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Survey Preview</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Preview how this question set will appear in the actual survey
+              </p>
+            </div>
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-50 border border-gray-300 rounded-md hover:bg-gray-100"
+            >
+              {showPreview ? (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L12 12m-3.122-3.122l4.243 4.243M12 12l3.878 3.878M12 12v6m0-6l3.878-3.878" />
+                  </svg>
+                  Hide Preview
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  Show Preview
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+        
+        {showPreview && (
+          <div className="p-6">
+            {questionConfigs.filter(q => q.isEnabled && q.isVisible && !q.isOrphaned).length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p className="text-sm">No questions are enabled for preview</p>
+                <p className="text-xs text-gray-400 mt-1">Enable at least one question to see the survey preview</p>
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="bg-white rounded-md shadow-sm">
+                  <Survey 
+                    model={new Model(previewSurveyJson)}
+                  />
+                </div>
+                <div className="mt-4 text-xs text-gray-500 text-center">
+                  This is a preview only - no data will be saved
+                </div>
+              </div>
+            )}
+            
+            {/* Debug Panel */}
+            <div className="mt-4 border-t pt-4">
+              <button
+                onClick={() => setShowDebug(!showDebug)}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-50 border border-gray-300 rounded-md hover:bg-gray-100"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {showDebug ? 'Hide Debug JSON' : 'Show Debug JSON'}
+              </button>
+              
+              {showDebug && (
+                <div className="mt-3">
+                  <div className="bg-gray-900 text-green-400 text-xs font-mono p-4 rounded-lg overflow-auto max-h-96">
+                    <pre>{JSON.stringify(previewSurveyJson, null, 2)}</pre>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600">
+                    Source View Records: {sourceViewData.length} | 
+                    Enabled Questions: {questionConfigs.filter(q => q.isEnabled && q.isVisible && !q.isOrphaned).length}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

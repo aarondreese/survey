@@ -1,6 +1,8 @@
 // surveyDefinition.js
 // Edit this file to change the survey definition returned by the API
 
+import { read } from "fs";
+
 const survey = {
   title: "Customer Feedback Survey",
   pages: [
@@ -16,6 +18,7 @@ const survey = {
           type: "rating",
           name: "satisfaction",
           title: "How satisfied are you with our service?",
+          readOnly: false,
           minRateDescription: "Not Satisfied",
           maxRateDescription: "Completely satisfied",
         },
@@ -32,7 +35,7 @@ const survey = {
             {
               type: "radiogroup",
               name: "solarType",
-              title: "Solar Type",
+              title: "Solar Typexx",
               isRequired: false,
               visible: true,
               propertyAttributeID: 123456,
@@ -89,8 +92,9 @@ const survey = {
               type: "dropdown",
               name: "solarCondition",
               title: "Condition",
-              isRequired: false,
+              isRequired: true,
               visible: true,
+              readOnly: false,
               fieldName: "Lookup02",
               choices: [
                 { value: 23, text: "Broken" },

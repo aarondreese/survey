@@ -28,6 +28,7 @@ export interface QuestionSetQuestion {
   isBlind: boolean;
   minIsCurrent: boolean;
   sortOrder: number;
+
   rowstamp?: Buffer;
 }
 
