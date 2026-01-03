@@ -44,7 +44,9 @@ export default function ScratchPage() {
     element: any,
     instanceId: any,
     rawPageId: number,
-    surveyData: Record<string, any>
+    surveyData: Record<string, any>,
+    assetIdValue: number,
+    attributeId: any
   ) => {
     // Make element name unique
     const originalName = element.name;
@@ -53,6 +55,11 @@ export default function ScratchPage() {
     } else {
       element.name = `page_${rawPageId}_${originalName}`;
     }
+
+    // Add metadata to element for later export
+    element.assetId = assetIdValue;
+    element.instanceId = instanceId;
+    element.attributeId = attributeId || element.attributeId;
 
     console.log("Processing element:", element.name);
     console.log(
@@ -274,10 +281,26 @@ export default function ScratchPage() {
 
       // Parse all pages from API
       const parsedPages = data.pages
-        .map((page: { ID: number; JSONText: string; ParsedJSON: any }) => {
+        .map((page: { 
+          ID: number; 
+          JSONText: string; 
+          ParsedJSON: any;
+          PageSplit: boolean;
+          PageSplitIdentifier: string | null;
+          InstanceID: number | null;
+          AttributeID: number | null;
+        }) => {
           console.log(
             "Processing raw page:",
             page.ID,
+            "InstanceID:",
+            page.InstanceID,
+            "AttributeID:",
+            page.AttributeID,
+            "PageSplit:",
+            page.PageSplit,
+            "PageSplitIdentifier:",
+            page.PageSplitIdentifier,
             "ParsedJSON:",
             page.ParsedJSON
           );
@@ -290,10 +313,11 @@ export default function ScratchPage() {
             ? page.ParsedJSON[0]
             : page.ParsedJSON;
 
-          // Extract new properties (camelCase)
-          const instanceId = pageData.instance;
-          const pageSplit = pageData.pageSplit;
-          const pageSplitIdentifier = pageData.pageSplitIdentifier;
+          // Extract instance and attributeId - prefer API level, fallback to ParsedJSON
+          const instanceId = page.InstanceID ?? pageData.instance;
+          const attributeId = page.AttributeID ?? pageData.attributeId;
+          const pageSplit = page.PageSplit;
+          const pageSplitIdentifier = page.PageSplitIdentifier;
 
           console.log(
             "Page ID:",
@@ -319,6 +343,7 @@ export default function ScratchPage() {
             rawPageId: page.ID,
             pageData,
             instanceId,
+            attributeId,
             pageSplit,
             pageSplitIdentifier,
           };
@@ -329,7 +354,14 @@ export default function ScratchPage() {
       const pageGroups = new Map<string | null, any[]>();
 
       parsedPages.forEach((p: any) => {
-        const identifier = p.pageSplitIdentifier || null;
+        // Normalize the identifier - treat empty string, null, undefined as null
+        let identifier = p.pageSplitIdentifier;
+        if (!identifier || identifier.trim() === '') {
+          identifier = null;
+        }
+        
+        console.log("Grouping page ID:", p.rawPageId, "with identifier:", identifier);
+        
         if (!pageGroups.has(identifier)) {
           pageGroups.set(identifier, []);
         }
@@ -337,6 +369,9 @@ export default function ScratchPage() {
       });
 
       console.log("Page groups:", pageGroups);
+      pageGroups.forEach((group, identifier) => {
+        console.log(`Group "${identifier}": ${group.length} pages`, group.map((p: any) => `ID:${p.rawPageId} instance:${p.instanceId}`));
+      });
 
       // Build Survey.js pages structure
       const surveyPages: any[] = [];
@@ -349,10 +384,11 @@ export default function ScratchPage() {
           group.length
         );
 
-        if (identifier && group.length > 1) {
-          // Multiple question sets with same identifier - put in sections on one page
+        if (identifier) {
+          // Has identifier - create one page with the identifier as the page name/title
+          // Each data row becomes a separate section (panel) on this page
           const surveyPage: any = {
-            name: `page_${identifier}`,
+            name: `page_${assetId}_${identifier}`,
             title: identifier,
             elements: [],
           };
@@ -360,16 +396,15 @@ export default function ScratchPage() {
           group.forEach((p: any, idx: number) => {
             const pageData = p.pageData;
             const instanceId = p.instanceId;
+            const attributeId = p.attributeId;
 
             // Create a panel (section) for this question set
             const panel: any = {
               type: "panel",
-              name: `panel_${identifier}_${idx}`,
+              name: `panel_${assetId}_${instanceId}`,
               title:
                 instanceId !== undefined && instanceId !== null
-                  ? `${
-                      pageData.title || pageData.name || "Section"
-                    } (Instance: ${instanceId})`
+                  ? `${pageData.title || pageData.name || "Section"} [${instanceId}]`
                   : pageData.title || pageData.name || "Section",
               elements: [],
             };
@@ -381,7 +416,9 @@ export default function ScratchPage() {
                   element,
                   instanceId,
                   p.rawPageId,
-                  surveyData
+                  surveyData,
+                  assetId,
+                  attributeId
                 );
               });
             }
@@ -391,16 +428,17 @@ export default function ScratchPage() {
 
           surveyPages.push(surveyPage);
         } else {
-          // Single question set or no identifier - each gets its own page
+          // No identifier - each gets its own page
           group.forEach((p: any) => {
             const pageData = p.pageData;
             const instanceId = p.instanceId;
+            const attributeId = p.attributeId;
 
             const surveyPage: any = {
               name:
                 instanceId !== undefined && instanceId !== null
-                  ? `page_instance_${instanceId}`
-                  : `page_${p.rawPageId}`,
+                  ? `page_${assetId}_instance_${instanceId}`
+                  : `page_${assetId}_${p.rawPageId}`,
               title: pageData.title || pageData.name || "Page",
               elements: [],
             };
@@ -418,7 +456,9 @@ export default function ScratchPage() {
                   element,
                   instanceId,
                   p.rawPageId,
-                  surveyData
+                  surveyData,
+                  assetId,
+                  attributeId
                 );
               });
             }
@@ -558,37 +598,21 @@ export default function ScratchPage() {
                     model.showCompletedPage = false;
                     model.applyTheme(LayeredLight);
 
+                    // Enable Table of Contents on the right
+                    model.showTOC = true;
+                    model.tocLocation = "right";
+
+                    // Enable Progress Bar at the top
+                    model.showProgressBar = true;
+                    model.progressBarLocation = "top";
+                    model.progressBarType = "pages";
+                    model.progressBarShowPageNumbers = false;
+                    model.progressBarShowPageTitles = true;
+
                     // Set the survey data (CurrentValues)
                     if (surveyJson.data) {
                       model.data = surveyJson.data;
                       console.log("Set survey data:", surveyJson.data);
-                    }
-
-                    // Add page number to each page title
-                    model.onCurrentPageChanged.add((sender) => {
-                      const currentPage = sender.currentPage;
-                      if (currentPage) {
-                        const pageNo = sender.currentPageNo + 1;
-                        const totalPages = sender.visiblePageCount;
-                        const originalTitle =
-                          currentPage.title || currentPage.name || "Page";
-
-                        // Only add page number if not already present
-                        if (!originalTitle.includes("[Page")) {
-                          currentPage.title = `[Page ${pageNo} of ${totalPages}] ${originalTitle}`;
-                        }
-                      }
-                    });
-
-                    // Set initial page title
-                    if (model.currentPage) {
-                      const pageNo = model.currentPageNo + 1;
-                      const totalPages = model.visiblePageCount;
-                      const originalTitle =
-                        model.currentPage.title ||
-                        model.currentPage.name ||
-                        "Page";
-                      model.currentPage.title = `[Page ${pageNo} of ${totalPages}] ${originalTitle}`;
                     }
 
                     return model;

@@ -14,7 +14,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Call the stored procedure
-    const result = await executeQuery<{ ID: number; JSONText: string }>(
+    const result = await executeQuery<{ 
+      ID: number; 
+      JSONText: string;
+      PageSplit: boolean;
+      PageSplitIdentifier: string | null;
+      InstanceID: number | null;
+      AttributeID: number | null;
+    }>(
       `EXEC usp_GenerateSurvey @TemplateID = @templateId, @AssetID = @assetId`,
       { templateId, assetId }
     );
@@ -23,6 +30,10 @@ export async function POST(request: NextRequest) {
     const pages = result.map((page) => ({
       ID: page.ID,
       JSONText: page.JSONText,
+      PageSplit: page.PageSplit,
+      PageSplitIdentifier: page.PageSplitIdentifier,
+      InstanceID: page.InstanceID,
+      AttributeID: page.AttributeID,
       // Pre-parse the JSON to avoid double-escaping
       ParsedJSON: JSON.parse(page.JSONText)
     }));
