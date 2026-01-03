@@ -40,7 +40,12 @@ export default function ScratchPage() {
   };
 
   // Helper function to process individual elements
-  const processElement = (element: any, instanceId: any, rawPageId: number, surveyData: Record<string, any>) => {
+  const processElement = (
+    element: any,
+    instanceId: any,
+    rawPageId: number,
+    surveyData: Record<string, any>
+  ) => {
     // Make element name unique
     const originalName = element.name;
     if (instanceId !== undefined && instanceId !== null) {
@@ -48,15 +53,33 @@ export default function ScratchPage() {
     } else {
       element.name = `page_${rawPageId}_${originalName}`;
     }
-    
+
     console.log("Processing element:", element.name);
-    console.log("  currentValue:", element.currentValue, "(type:", typeof element.currentValue, ")");
-    console.log("  defaultValue:", element.defaultValue, "(type:", typeof element.defaultValue, ")");
-    console.log("  choices (raw):", element.choices, "(type:", typeof element.choices, ")");
-    
+    console.log(
+      "  currentValue:",
+      element.currentValue,
+      "(type:",
+      typeof element.currentValue,
+      ")"
+    );
+    console.log(
+      "  defaultValue:",
+      element.defaultValue,
+      "(type:",
+      typeof element.defaultValue,
+      ")"
+    );
+    console.log(
+      "  choices (raw):",
+      element.choices,
+      "(type:",
+      typeof element.choices,
+      ")"
+    );
+
     // Parse choices if it's a string
     let choices = element.choices;
-    if (typeof choices === 'string') {
+    if (typeof choices === "string") {
       try {
         choices = JSON.parse(choices);
         element.choices = choices; // Update the element with parsed choices
@@ -66,68 +89,99 @@ export default function ScratchPage() {
         choices = null;
       }
     }
-    
+
     // Verify choices structure and log each choice
     if (choices && Array.isArray(choices)) {
       console.log("  Choices array has", choices.length, "items:");
       choices.forEach((choice: any, idx: number) => {
         console.log(`    [${idx}] Raw choice:`, choice);
-        console.log(`    [${idx}] value:`, choice.value, "Value:", choice.Value, "(type:", typeof (choice.value || choice.Value), ")");
-        console.log(`    [${idx}] text:`, choice.text, "Text:", choice.Text, "(type:", typeof (choice.text || choice.Text), ")");
+        console.log(
+          `    [${idx}] value:`,
+          choice.value,
+          "Value:",
+          choice.Value,
+          "(type:",
+          typeof (choice.value || choice.Value),
+          ")"
+        );
+        console.log(
+          `    [${idx}] text:`,
+          choice.text,
+          "Text:",
+          choice.Text,
+          "(type:",
+          typeof (choice.text || choice.Text),
+          ")"
+        );
       });
-      
+
       // Normalize choices to ensure lowercase 'value' and 'text' properties
       element.choices = choices.map((choice: any) => ({
         value: choice.value !== undefined ? choice.value : choice.Value,
-        text: choice.text !== undefined ? choice.text : choice.Text
+        text: choice.text !== undefined ? choice.text : choice.Text,
       }));
-      
+
       console.log("  Normalized choices:", element.choices);
       // Update the local choices variable to use normalized version
       choices = element.choices;
     }
-    
+
     // Determine the value to use: currentValue takes precedence, then defaultValue
-    const valueToUse = element.currentValue !== undefined && element.currentValue !== null 
-      ? element.currentValue 
-      : element.defaultValue;
-    
+    const valueToUse =
+      element.currentValue !== undefined && element.currentValue !== null
+        ? element.currentValue
+        : element.defaultValue;
+
     console.log("  valueToUse:", valueToUse);
-    
+
     // Debug: Add currentValue and matched option to title
     if (valueToUse !== undefined && valueToUse !== null) {
       let debugText = `${element.title || element.name}`;
-      
+
       if (element.currentValue !== undefined && element.currentValue !== null) {
         debugText += ` (CV: ${element.currentValue}`;
-      } else if (element.defaultValue !== undefined && element.defaultValue !== null) {
+      } else if (
+        element.defaultValue !== undefined &&
+        element.defaultValue !== null
+      ) {
         debugText += ` (DV: ${element.defaultValue}`;
       }
-      
+
       if (choices && Array.isArray(choices)) {
         console.log("  Looking for match in", choices.length, "choices");
-        
+
         const matchedChoice = choices.find((choice: any) => {
           // Convert both to strings for comparison to handle type mismatches
           const choiceValueStr = String(choice.value);
           const valueToUseStr = String(valueToUse);
           const matches = choiceValueStr === valueToUseStr;
-          console.log("    Checking choice.value:", choice.value, "(", typeof choice.value, ") == valueToUse:", valueToUse, "(", typeof valueToUse, "):", matches);
+          console.log(
+            "    Checking choice.value:",
+            choice.value,
+            "(",
+            typeof choice.value,
+            ") == valueToUse:",
+            valueToUse,
+            "(",
+            typeof valueToUse,
+            "):",
+            matches
+          );
           return matches;
         });
-        
+
         if (matchedChoice) {
           debugText += ` => "${matchedChoice.text}"`;
           console.log("  ✓ MATCHED:", matchedChoice);
         } else {
-          debugText += ' => NO MATCH';
+          debugText += " => NO MATCH";
           console.log("  ⚠️ NO MATCH FOUND");
         }
       }
-      debugText += ')';
+      debugText += ")";
       element.title = debugText;
     }
-    
+
     // Initialize survey data from currentValue or defaultValue
     // This sets the initial selected value in the survey
     if (valueToUse !== undefined && valueToUse !== null) {
@@ -136,13 +190,27 @@ export default function ScratchPage() {
           // Convert both to strings for comparison
           return String(choice.value) === String(valueToUse);
         });
-        
+
         if (matchedChoice) {
           // Store the matched choice value (use the actual choice.value, not the string)
           surveyData[element.name] = matchedChoice.value;
-          console.log("✓ Set initial value for", element.name, "to", matchedChoice.value, "(type:", typeof matchedChoice.value, "), text:", matchedChoice.text);
+          console.log(
+            "✓ Set initial value for",
+            element.name,
+            "to",
+            matchedChoice.value,
+            "(type:",
+            typeof matchedChoice.value,
+            "), text:",
+            matchedChoice.text
+          );
         } else {
-          console.warn("⚠️ NO MATCHING CHOICE for", element.name, "valueToUse:", valueToUse);
+          console.warn(
+            "⚠️ NO MATCHING CHOICE for",
+            element.name,
+            "valueToUse:",
+            valueToUse
+          );
           // Try to convert to number if it looks like a number
           const numValue = Number(valueToUse);
           surveyData[element.name] = !isNaN(numValue) ? numValue : valueToUse;
@@ -150,16 +218,21 @@ export default function ScratchPage() {
       } else {
         // No choices, just use the value directly
         surveyData[element.name] = valueToUse;
-        console.log("Set initial value (no choices) for", element.name, "to", valueToUse);
+        console.log(
+          "Set initial value (no choices) for",
+          element.name,
+          "to",
+          valueToUse
+        );
       }
     }
-    
+
     // DON'T delete currentValue or defaultValue - preserve them for future use
     // Only clean up page-level properties that shouldn't be on elements
     delete element.instance;
     delete element.pageSplit;
     delete element.pageSplitIdentifier;
-    
+
     // Final verification log
     console.log("Final element state for", element.name, ":");
     console.log("  type:", element.type);
@@ -167,7 +240,7 @@ export default function ScratchPage() {
     console.log("  currentValue:", element.currentValue);
     console.log("  defaultValue:", element.defaultValue);
     console.log("  surveyData[", element.name, "]:", surveyData[element.name]);
-    
+
     return element;
   };
 
@@ -202,40 +275,59 @@ export default function ScratchPage() {
       // Parse all pages from API
       const parsedPages = data.pages
         .map((page: { ID: number; JSONText: string; ParsedJSON: any }) => {
-          console.log("Processing raw page:", page.ID, "ParsedJSON:", page.ParsedJSON);
+          console.log(
+            "Processing raw page:",
+            page.ID,
+            "ParsedJSON:",
+            page.ParsedJSON
+          );
           if (!page.ParsedJSON) {
             console.error("Page missing ParsedJSON property:", page);
             return null;
           }
-          
-          const pageData = Array.isArray(page.ParsedJSON) ? page.ParsedJSON[0] : page.ParsedJSON;
-          
+
+          const pageData = Array.isArray(page.ParsedJSON)
+            ? page.ParsedJSON[0]
+            : page.ParsedJSON;
+
           // Extract new properties (camelCase)
           const instanceId = pageData.instance;
           const pageSplit = pageData.pageSplit;
           const pageSplitIdentifier = pageData.pageSplitIdentifier;
-          
-          console.log("Page ID:", page.ID, "- instance:", instanceId, "pageSplit:", pageSplit, "pageSplitIdentifier:", pageSplitIdentifier);
+
+          console.log(
+            "Page ID:",
+            page.ID,
+            "- instance:",
+            instanceId,
+            "pageSplit:",
+            pageSplit,
+            "pageSplitIdentifier:",
+            pageSplitIdentifier
+          );
           console.log("Page elements count:", pageData.elements?.length);
-          
+
           // Log first element to see structure
           if (pageData.elements && pageData.elements.length > 0) {
-            console.log("First element in page:", JSON.stringify(pageData.elements[0], null, 2));
+            console.log(
+              "First element in page:",
+              JSON.stringify(pageData.elements[0], null, 2)
+            );
           }
-          
+
           return {
             rawPageId: page.ID,
             pageData,
             instanceId,
             pageSplit,
-            pageSplitIdentifier
+            pageSplitIdentifier,
           };
         })
         .filter((p: any) => p !== null);
 
       // Group pages by pageSplitIdentifier
       const pageGroups = new Map<string | null, any[]>();
-      
+
       parsedPages.forEach((p: any) => {
         const identifier = p.pageSplitIdentifier || null;
         if (!pageGroups.has(identifier)) {
@@ -250,34 +342,47 @@ export default function ScratchPage() {
       const surveyPages: any[] = [];
 
       pageGroups.forEach((group, identifier) => {
-        console.log("Processing group with identifier:", identifier, "- pages:", group.length);
-        
+        console.log(
+          "Processing group with identifier:",
+          identifier,
+          "- pages:",
+          group.length
+        );
+
         if (identifier && group.length > 1) {
           // Multiple question sets with same identifier - put in sections on one page
           const surveyPage: any = {
             name: `page_${identifier}`,
             title: identifier,
-            elements: []
+            elements: [],
           };
 
           group.forEach((p: any, idx: number) => {
             const pageData = p.pageData;
             const instanceId = p.instanceId;
-            
+
             // Create a panel (section) for this question set
             const panel: any = {
               type: "panel",
               name: `panel_${identifier}_${idx}`,
-              title: instanceId !== undefined && instanceId !== null 
-                ? `${pageData.title || pageData.name || 'Section'} (Instance: ${instanceId})`
-                : pageData.title || pageData.name || 'Section',
-              elements: []
+              title:
+                instanceId !== undefined && instanceId !== null
+                  ? `${
+                      pageData.title || pageData.name || "Section"
+                    } (Instance: ${instanceId})`
+                  : pageData.title || pageData.name || "Section",
+              elements: [],
             };
 
             // Process elements
             if (pageData.elements) {
               panel.elements = pageData.elements.map((element: any) => {
-                return processElement(element, instanceId, p.rawPageId, surveyData);
+                return processElement(
+                  element,
+                  instanceId,
+                  p.rawPageId,
+                  surveyData
+                );
               });
             }
 
@@ -290,13 +395,14 @@ export default function ScratchPage() {
           group.forEach((p: any) => {
             const pageData = p.pageData;
             const instanceId = p.instanceId;
-            
+
             const surveyPage: any = {
-              name: instanceId !== undefined && instanceId !== null 
-                ? `page_instance_${instanceId}`
-                : `page_${p.rawPageId}`,
-              title: pageData.title || pageData.name || 'Page',
-              elements: []
+              name:
+                instanceId !== undefined && instanceId !== null
+                  ? `page_instance_${instanceId}`
+                  : `page_${p.rawPageId}`,
+              title: pageData.title || pageData.name || "Page",
+              elements: [],
             };
 
             // Add instance info to title if exists
@@ -308,7 +414,12 @@ export default function ScratchPage() {
             // Process elements
             if (pageData.elements) {
               surveyPage.elements = pageData.elements.map((element: any) => {
-                return processElement(element, instanceId, p.rawPageId, surveyData);
+                return processElement(
+                  element,
+                  instanceId,
+                  p.rawPageId,
+                  surveyData
+                );
               });
             }
 
@@ -334,6 +445,41 @@ export default function ScratchPage() {
 
   return (
     <div className="p-8">
+      <style jsx global>{`
+        /* Fix Survey.js navigation buttons to stay in place */
+        .sd-footer {
+          display: grid !important;
+          grid-template-columns: auto 1fr auto !important;
+          grid-template-rows: auto auto !important;
+          gap: 1rem !important;
+          width: 100% !important;
+        }
+        
+        /* Reset any default margins */
+        .sd-footer .sd-btn {
+          margin: 0 !important;
+        }
+        
+        /* Previous button ALWAYS Row 1, Column 1 (left) */
+        .sd-navigation__prev-btn {
+          grid-column: 1 !important;
+          grid-row: 1 !important;
+        }
+        
+        /* Next button ALWAYS Row 1, Column 3 (right) */
+        .sd-navigation__next-btn {
+          grid-column: 3 !important;
+          grid-row: 1 !important;
+        }
+        
+        /* Complete button ALWAYS Row 2, spans all columns, full width */
+        .sd-navigation__complete-btn {
+          grid-column: 1 / -1 !important;
+          grid-row: 2 !important;
+          width: 100% !important;
+        }
+      `}</style>
+      
       <HomeButton />
 
       <div className="mb-6">
@@ -411,36 +557,40 @@ export default function ScratchPage() {
                     const model = new Model(surveyJson.survey);
                     model.showCompletedPage = false;
                     model.applyTheme(LayeredLight);
-                    
+
                     // Set the survey data (CurrentValues)
                     if (surveyJson.data) {
                       model.data = surveyJson.data;
                       console.log("Set survey data:", surveyJson.data);
                     }
-                    
+
                     // Add page number to each page title
                     model.onCurrentPageChanged.add((sender) => {
                       const currentPage = sender.currentPage;
                       if (currentPage) {
                         const pageNo = sender.currentPageNo + 1;
                         const totalPages = sender.visiblePageCount;
-                        const originalTitle = currentPage.title || currentPage.name || 'Page';
-                        
+                        const originalTitle =
+                          currentPage.title || currentPage.name || "Page";
+
                         // Only add page number if not already present
-                        if (!originalTitle.includes('[Page')) {
+                        if (!originalTitle.includes("[Page")) {
                           currentPage.title = `[Page ${pageNo} of ${totalPages}] ${originalTitle}`;
                         }
                       }
                     });
-                    
+
                     // Set initial page title
                     if (model.currentPage) {
                       const pageNo = model.currentPageNo + 1;
                       const totalPages = model.visiblePageCount;
-                      const originalTitle = model.currentPage.title || model.currentPage.name || 'Page';
+                      const originalTitle =
+                        model.currentPage.title ||
+                        model.currentPage.name ||
+                        "Page";
                       model.currentPage.title = `[Page ${pageNo} of ${totalPages}] ${originalTitle}`;
                     }
-                    
+
                     return model;
                   })()}
                 />
