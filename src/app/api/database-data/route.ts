@@ -23,7 +23,23 @@ export async function GET(request: Request) {
 
     // Get data records from the view
     const query = `SELECT * FROM [${viewName}]`;
-    const records = await executeQuery(query);
+    const rawRecords = await executeQuery(query) as Record<string, unknown>[];
+    
+    // Normalize property names to camelCase
+    const records = rawRecords.map((record) => {
+      const normalized: Record<string, unknown> = {};
+      
+      for (const [key, value] of Object.entries(record)) {
+        // Convert PascalCase or snake_case to camelCase
+        const camelKey = key
+          .replace(/^[A-Z]/, (letter) => letter.toLowerCase()) // PascalCase to camelCase
+          .replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()); // snake_case to camelCase
+        
+        normalized[camelKey] = value;
+      }
+      
+      return normalized;
+    });
     
     return NextResponse.json({
       success: true,

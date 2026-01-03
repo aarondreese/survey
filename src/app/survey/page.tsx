@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import HomeButton from "@/components/HomeButton";
 
 import { Survey } from "survey-react-ui";
 import { Model, Serializer } from "survey-core";
@@ -24,16 +26,13 @@ export default function SurveyPage() {
   if (loading) return <div>Loading survey...</div>;
   if (!surveyJson) return <div>Survey not found.</div>;
 
-  // Set up SurveyJS model and blind default for solarOutputRating
+  // Set up SurveyJS model
   const surveyModel = new Model(surveyJson);
-  surveyModel.onComplete.add(function(sender) {
-    if (!sender.data.solarOutputRating) {
-      sender.setValue("solarOutputRating", 3); // Blind default value
-    }
-  });
 
   return (
     <div style={{ maxWidth: 600, margin: "2rem auto" }}>
+      <HomeButton />
+
       <Survey model={surveyModel} />
     </div>
   );

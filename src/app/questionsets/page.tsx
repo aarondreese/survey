@@ -1,94 +1,26 @@
 "use client";
 import { useState, useEffect } from "react";
-import Link from "next/link";
-
-interface QuestionSetHeader {
-  id: number;
-  name: string;
-  description?: string;
-  sourceViewName?: string;
-  subscript?: string;
-}
-
-interface QuestionSetQuestion {
-  id: number;
-  questionSetHeaderId: number;
-  fieldName: string;
-  attributeLabel: string;
-  surveyLabel: string;
-  displayType: string;
-  choices?: string;
-  description?: string;
-  placeholder?: string;
-  minValue?: number;
-  maxValue?: number;
-  colCount?: number;
-  isReadOnly: boolean;
-  isVisible: boolean;
-  isRequired: boolean;
-  isBlind: boolean;
-  minIsCurrent: boolean;
-  sortOrder: number;
-}
-
-// Helper function to render choices as pills
-const renderChoicesPills = (choices: string) => {
-  try {
-    const parsedChoices = JSON.parse(choices);
-    
-    if (Array.isArray(parsedChoices)) {
-      return parsedChoices.map((choice, index) => {
-        let displayText = '';
-        
-        if (typeof choice === 'object' && choice !== null) {
-          // Handle common choice object formats
-          displayText = choice.Text || choice.text || choice.label || choice.name || choice.title || 
-                       (choice.value !== undefined ? String(choice.value) : JSON.stringify(choice));
-        } else {
-          displayText = String(choice);
-        }
-        
-        return (
-          <span 
-            key={index}
-            className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-1 mb-1"
-          >
-            {displayText}
-          </span>
-        );
-      });
-    } else if (typeof parsedChoices === 'object' && parsedChoices !== null) {
-      return Object.entries(parsedChoices).map(([key, value], index) => (
-        <span 
-          key={index}
-          className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-1 mb-1"
-        >
-          {typeof value === 'object' ? `${key}: ${JSON.stringify(value)}` : `${key}: ${value}`}
-        </span>
-      ));
-    } else {
-      return (
-        <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-1 mb-1">
-          {String(parsedChoices)}
-        </span>
-      );
-    }
-  } catch {
-    // If it's not valid JSON, display as plain text
-    return (
-      <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full mr-1 mb-1">
-        {choices}
-      </span>
-    );
-  }
-};
+import { QuestionSetHeader, QuestionSetQuestion } from "@/types/questionsets";
+import HomeButton from "@/components/HomeButton";
+import CreateButton from "@/components/CreateButton";
+import ListCard from "@/components/ListCard";
+import ActionButton from "@/components/ActionButton";
+import { EditIcon, PencilIcon, DocumentIcon } from "@/components/icons";
+import { Survey } from "survey-react-ui";
+import { Model } from "survey-core";
+import { LayeredLight } from "survey-core/themes";
+import "survey-core/survey-core.min.css";
 
 export default function QuestionSetsPage() {
   const [questionSets, setQuestionSets] = useState<QuestionSetHeader[]>([]);
-  const [selectedQuestionSet, setSelectedQuestionSet] = useState<QuestionSetHeader | null>(null);
+  const [selectedQuestionSet, setSelectedQuestionSet] =
+    useState<QuestionSetHeader | null>(null);
   const [questions, setQuestions] = useState<QuestionSetQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [previewSurveyJson, setPreviewSurveyJson] = useState<object | null>(
+    null
+  );
 
   // Load all question sets on component mount
   useEffect(() => {
@@ -99,16 +31,16 @@ export default function QuestionSetsPage() {
     try {
       setLoading(true);
       const response = await fetch("/api/questionsets");
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Handle both array response and object with data property
-      const questionSetsData = Array.isArray(data) ? data : (data.data || []);
-      
+      const questionSetsData = Array.isArray(data) ? data : data.data || [];
+
       setQuestionSets(questionSetsData);
     } catch (error) {
       console.error("Error fetching question sets:", error);
@@ -118,24 +50,209 @@ export default function QuestionSetsPage() {
     }
   };
 
-  const fetchQuestions = async (questionSetId: number) => {
+  const generateSurveyPreview = (
+    questionsList: QuestionSetQuestion[],
+    questionSetData: QuestionSetHeader,
+    sourceData: Record<string, unknown>[] = []
+  ) => {
+    if (!questionsList || questionsList.length === 0) {
+      setPreviewSurveyJson(null);
+      return;
+    }
+
+    const enabledQuestions = questionsList.filter((q) => q.isVisible);
+
+    const surveyElements = enabledQuestions.map((question) => {
+      const element: Record<string, unknown> = {
+        type: getSurveyJSType(question.displayType),
+        name: question.fieldName,
+        title: question.surveyLabel || question.attributeLabel,
+        isRequired: question.isRequired,
+        readOnly: question.isReadOnly,
+      };
+
+      // Set inputType for date fields
+      if (question.displayType.toLowerCase() === "date") {
+        element.inputType = "date";
+      }
+
+      // Set inputType for number fields
+      if (question.displayType.toLowerCase() === "number") {
+        element.inputType = "number";
+      }
+
+      // Add placeholder if available
+      if (question.placeholder) {
+        element.placeholder = question.placeholder;
+      }
+
+      // Add description if available
+      if (question.description) {
+        element.description = question.description;
+      }
+
+      // Handle choices for dropdown/radio/checkbox - try source data first, then saved choices
+      if (
+        ["dropdown", "radiogroup", "checkbox"].includes(element.type as string)
+      ) {
+        // First try to get options from source view data
+        const matchingSourceRecord = sourceData.find((record) => {
+          const sourceFieldName = String(
+            record.fieldName || record.label || ""
+          );
+          return sourceFieldName === question.fieldName;
+        });
+
+        let choices: Array<{ value: unknown; text: string }> = [];
+
+        if (matchingSourceRecord) {
+          const optionsJson = String(matchingSourceRecord.options || "");
+          if (optionsJson && optionsJson.trim() !== "") {
+            try {
+              const parsedOptions = JSON.parse(optionsJson);
+              if (Array.isArray(parsedOptions)) {
+                choices = parsedOptions.map((choice: unknown) => {
+                  if (
+                    typeof choice === "object" &&
+                    choice !== null &&
+                    "Text" in choice
+                  ) {
+                    const choiceObj = choice as Record<string, unknown>;
+                    return {
+                      value:
+                        choiceObj.Value || choiceObj.value || choiceObj.Text,
+                      text: String(
+                        choiceObj.Text ||
+                          choiceObj.text ||
+                          choiceObj.Value ||
+                          choiceObj.value
+                      ),
+                    };
+                  }
+                  return { value: choice, text: String(choice) };
+                });
+              }
+            } catch (error) {
+              console.error("Error parsing options from source view:", error);
+            }
+          }
+        }
+
+        // Fallback to saved choices if no source data options
+        if (choices.length === 0 && question.choices) {
+          try {
+            const parsedChoices = JSON.parse(question.choices);
+            if (Array.isArray(parsedChoices)) {
+              choices = parsedChoices.map((choice: unknown) => {
+                if (
+                  typeof choice === "object" &&
+                  choice !== null &&
+                  "value" in choice
+                ) {
+                  const choiceObj = choice as Record<string, unknown>;
+                  return {
+                    value: choiceObj.value,
+                    text: String(
+                      choiceObj.Text || choiceObj.text || choiceObj.value
+                    ),
+                  };
+                }
+                return { value: choice, text: String(choice) };
+              });
+            }
+          } catch (error) {
+            console.error("Error parsing saved choices:", error);
+          }
+        }
+
+        if (choices.length > 0) {
+          element.choices = choices;
+        }
+      }
+
+      // Handle numeric ranges
+      if (question.displayType === "number") {
+        if (question.minValue !== undefined) element.min = question.minValue;
+        if (question.maxValue !== undefined) element.max = question.maxValue;
+      }
+
+      return element;
+    });
+
+    const surveyJson = {
+      title: questionSetData.name || "Question Set Preview",
+      description: questionSetData.description || "",
+      pages: [
+        {
+          name: "page1",
+          elements: surveyElements,
+        },
+      ],
+    };
+
+    setPreviewSurveyJson(surveyJson);
+  };
+
+  const getSurveyJSType = (displayType: string): string => {
+    const typeMap: Record<string, string> = {
+      text: "text",
+      textarea: "comment",
+      number: "text",
+      date: "text",
+      dropdown: "dropdown",
+      radio: "radiogroup",
+      checkbox: "checkbox",
+      rating: "rating",
+    };
+
+    return typeMap[displayType.toLowerCase()] || "text";
+  };
+
+  const fetchQuestions = async (
+    questionSetId: number,
+    questionSetData: QuestionSetHeader
+  ) => {
     try {
       setQuestionsLoading(true);
-      const response = await fetch(`/api/questionsets/${questionSetId}/questions`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+
+      // Fetch questions
+      const questionsResponse = await fetch(
+        `/api/questionsets/${questionSetId}/questions`
+      );
+
+      if (!questionsResponse.ok) {
+        throw new Error(`HTTP error! status: ${questionsResponse.status}`);
       }
-      
-      const data = await response.json();
-      
-      // Handle both array response and object with data property
-      const questionsData = Array.isArray(data) ? data : (data.data || []);
-      
-      setQuestions(questionsData);
+
+      const questionsData = await questionsResponse.json();
+      const questions = Array.isArray(questionsData)
+        ? questionsData
+        : questionsData.data || [];
+
+      // Fetch source view data if available
+      let sourceData: Record<string, unknown>[] = [];
+      if (questionSetData.sourceViewName) {
+        try {
+          const sourceResponse = await fetch(
+            `/api/database-data?viewName=${encodeURIComponent(
+              questionSetData.sourceViewName
+            )}`
+          );
+          if (sourceResponse.ok) {
+            const sourceResult = await sourceResponse.json();
+            sourceData = sourceResult.records || [];
+          }
+        } catch (error) {
+          console.error("Error fetching source view data:", error);
+        }
+      }
+
+      setQuestions(questions);
+      generateSurveyPreview(questions, questionSetData, sourceData);
     } catch (error) {
       console.error("Error fetching questions:", error);
       setQuestions([]);
+      setPreviewSurveyJson(null);
     } finally {
       setQuestionsLoading(false);
     }
@@ -143,7 +260,7 @@ export default function QuestionSetsPage() {
 
   const handleQuestionSetSelect = (questionSet: QuestionSetHeader) => {
     setSelectedQuestionSet(questionSet);
-    fetchQuestions(questionSet.id);
+    fetchQuestions(questionSet.id, questionSet);
   };
 
   if (loading) {
@@ -152,48 +269,38 @@ export default function QuestionSetsPage() {
 
   return (
     <div className="p-6">
+      <HomeButton />
+
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Question Sets</h1>
-        <Link
-          href="/questionsets/new"
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+        <h1 className="font-bold text-2xl">Question Sets</h1>
+        <CreateButton href="/questionsets/new">
           Create New Question Set
-        </Link>
+        </CreateButton>
       </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <div className="gap-6 grid grid-cols-1 lg:grid-cols-2">
         {/* Question Sets List */}
-        <div className="bg-white rounded-lg shadow-md p-4">
-          <h2 className="text-lg font-semibold mb-4">Question Set Headers</h2>
-          
+        <div className="bg-white shadow-md p-4 rounded-lg">
+          <h2 className="mb-4 font-semibold text-lg">Question Set Headers</h2>
+
           {questionSets.length === 0 ? (
             <p className="text-gray-500">No question sets found.</p>
           ) : (
             <div className="space-y-2">
               {questionSets.map((questionSet) => (
-                <div
+                <ListCard
                   key={questionSet.id}
-                  className={`p-3 border rounded hover:bg-gray-50 ${
-                    selectedQuestionSet?.id === questionSet.id
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200"
-                  }`}
+                  isSelected={selectedQuestionSet?.id === questionSet.id}
+                  onClick={() => handleQuestionSetSelect(questionSet)}
                 >
-                  <div 
-                    className="cursor-pointer"
-                    onClick={() => handleQuestionSetSelect(questionSet)}
-                  >
+                  <div>
                     <div className="font-medium">{questionSet.name}</div>
                     {questionSet.description && (
-                      <div className="text-sm text-gray-600 mt-1">
+                      <div className="mt-1 text-gray-600 text-sm">
                         {questionSet.description}
                       </div>
                     )}
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="mt-1 text-gray-500 text-xs">
                       ID: {questionSet.id}
                       {questionSet.subscript && (
                         <span className="ml-2">
@@ -205,111 +312,98 @@ export default function QuestionSetsPage() {
                           Source: {questionSet.sourceViewName}
                         </span>
                       )}
+                      {selectedQuestionSet?.id === questionSet.id &&
+                        questions.length > 0 && (
+                          <span className="ml-2">
+                            Questions: {questions.length} (
+                            {questions.filter((q) => q.isVisible).length}{" "}
+                            visible)
+                          </span>
+                        )}
                     </div>
                   </div>
-                  
+
                   {/* Action buttons */}
-                  <div className="flex justify-end gap-2 mt-3 pt-2 border-t border-gray-100">
-                    <Link
-                      href={`/questionsets/${questionSet.id}/configure`}
-                      className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
-                      onClick={(e) => e.stopPropagation()}
+                  <div className="flex justify-end gap-2 mt-3 pt-2 border-gray-100 border-t">
+                    <ActionButton
+                      href={`/questionsets/${questionSet.id}/edit`}
+                      variant="green"
+                      icon={<PencilIcon />}
                     >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
+                      Edit Header
+                    </ActionButton>
+                    <ActionButton
+                      href={`/questionsets/${questionSet.id}/configure`}
+                      variant="blue"
+                      icon={<EditIcon />}
+                    >
                       Edit Questions
-                    </Link>
+                    </ActionButton>
                   </div>
-                </div>
+                </ListCard>
               ))}
             </div>
           )}
         </div>
 
-        {/* Questions Details */}
-        <div className="bg-white rounded-lg shadow-md p-4">
-          <h2 className="text-lg font-semibold mb-4">Question Details</h2>
-          
+        {/* Survey Preview */}
+        <div className="bg-white shadow-md p-4 rounded-lg">
           {!selectedQuestionSet ? (
-            <p className="text-gray-500">Select a question set to view its questions.</p>
+            <div className="py-8 text-gray-500 text-center">
+              <DocumentIcon className="mx-auto mb-4 w-12 h-12 text-gray-300" />
+              <p className="text-sm">
+                Select a question set to preview the survey
+              </p>
+            </div>
+          ) : questionsLoading ? (
+            <div className="py-8 text-gray-500 text-center">
+              <div className="inline-block mb-2 border-2 border-gray-300 border-t-blue-500 rounded-full w-6 h-6 animate-spin"></div>
+              <p className="text-sm">Loading survey preview...</p>
+            </div>
+          ) : !previewSurveyJson || questions.length === 0 ? (
+            <div className="py-8 text-gray-500 text-center">
+              <DocumentIcon className="mx-auto mb-4 w-12 h-12 text-gray-300" />
+              <p className="text-sm">
+                No questions found for this question set
+              </p>
+              <p className="mt-1 text-gray-400 text-xs">
+                Configure questions to see the survey preview
+              </p>
+            </div>
           ) : (
-            <div>
-              <div className="mb-4 p-3 bg-gray-50 rounded">
-                <h3 className="font-medium">{selectedQuestionSet.name}</h3>
-                {selectedQuestionSet.description && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    {selectedQuestionSet.description}
-                  </p>
-                )}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div
+                className="bg-white shadow-sm rounded-md overflow-y-auto"
+                style={{ height: "calc(100vh - 200px)" }}
+              >
+                <Survey
+                  model={(() => {
+                    const model = new Model(previewSurveyJson);
+                    // Allow interaction but don't save data
+                    model.showCompletedPage = false;
+                    // Apply the Layered Light theme
+                    model.applyTheme(LayeredLight);
+                    return model;
+                  })()}
+                />
+              </div>
+              <div className="mt-4 text-gray-500 text-xs text-center">
+                This is an interactive preview - no data will be saved
               </div>
 
-              {questionsLoading ? (
-                <p className="text-gray-500">Loading questions...</p>
-              ) : questions.length === 0 ? (
-                <p className="text-gray-500">No questions found for this question set.</p>
-              ) : (
-                <div className="space-y-3">
-                  {questions.map((question) => (
-                    <div key={question.id} className="border rounded p-3">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="font-medium text-sm text-gray-600">
-                          #{question.sortOrder}
-                        </span>
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                          {question.displayType}
-                        </span>
-                      </div>
-                      
-                      <div className="text-sm font-medium mb-2">
-                        {question.surveyLabel || question.attributeLabel}
-                      </div>
-                      
-                      {question.description && (
-                        <div className="text-xs text-gray-600 mb-2">
-                          {question.description}
-                        </div>
-                      )}
-                      
-                      {question.fieldName && (
-                        <div className="text-xs text-gray-600 mb-2">
-                          Field Name: {question.fieldName}
-                        </div>
-                      )}
-                      
-                      {question.placeholder && (
-                        <div className="text-xs text-gray-600 mb-2">
-                          Placeholder: {question.placeholder}
-                        </div>
-                      )}
-                      
-                      {question.choices && (
-                        <div className="mb-2 p-2 bg-gray-50 rounded border-l-4 border-blue-200">
-                          <div className="text-xs font-medium text-gray-700 mb-2">Available Choices:</div>
-                          <div className="flex flex-wrap -mr-1 -mb-1">
-                            {renderChoicesPills(question.choices)}
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="flex justify-between items-center text-xs text-gray-500">
-                        <span>ID: {question.id}</span>
-                        <div className="flex gap-2">
-                          {question.isRequired && (
-                            <span className="text-red-500">Required</span>
-                          )}
-                          {question.isReadOnly && (
-                            <span className="text-blue-500">Read Only</span>
-                          )}
-                          {!question.isVisible && (
-                            <span className="text-gray-400">Hidden</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Debug Panel */}
+              <div className="mt-4">
+                <details className="bg-gray-800 rounded-lg overflow-hidden">
+                  <summary className="hover:bg-gray-700 px-4 py-2 font-medium text-white text-sm cursor-pointer">
+                    Debug: Survey JSON
+                  </summary>
+                  <div className="p-4 border-gray-700 border-t">
+                    <pre className="overflow-x-auto font-mono text-green-400 text-xs">
+                      {JSON.stringify(previewSurveyJson, null, 2)}
+                    </pre>
+                  </div>
+                </details>
+              </div>
             </div>
           )}
         </div>

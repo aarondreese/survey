@@ -56,9 +56,11 @@ export class QuestionSetService {
   // Create new question set
   static async create(data: CreateQuestionSetRequest): Promise<QuestionSetHeader> {
     const result = await executeQuery<QuestionSetHeader>(
-      `INSERT INTO QuestionSetHeader (Name, Description, SourceViewName, Subscript)
-       OUTPUT INSERTED.ID as id, INSERTED.Name as name, INSERTED.Description as description, INSERTED.SourceViewName as sourceViewName, INSERTED.Subscript as subscript
-       VALUES (@name, @description, @sourceViewName, @subscript)`,
+      `EXEC usp_InsertQuestionSetHeader 
+       @name = @name, 
+       @description = @description, 
+       @sourceViewName = @sourceViewName, 
+       @subscript = @subscript`,
       {
         name: data.name.trim(),
         description: data.description || null,
@@ -76,32 +78,25 @@ export class QuestionSetService {
 
   // Update question set
   static async update(id: number, data: Partial<CreateQuestionSetRequest>): Promise<QuestionSetHeader | null> {
-    const updateFields: string[] = [];
-    const params: Record<string, unknown> = { id };
-
-    if (data.name !== undefined) {
-      updateFields.push('Name = @name');
-      params.name = data.name.trim();
-    }
-    if (data.description !== undefined) {
-      updateFields.push('Description = @description');
-      params.description = data.description || null;
-    }
-    if (data.sourceViewName !== undefined) {
-      updateFields.push('SourceViewName = @sourceViewName');
-      params.sourceViewName = data.sourceViewName || null;
-    }
-
-    if (updateFields.length === 0) {
+    // If no fields to update, return current record
+    if (!data.name && !data.description && !data.sourceViewName && !data.subscript) {
       return this.getById(id);
     }
 
     const result = await executeQuery<QuestionSetHeader>(
-      `UPDATE QuestionSetHeader 
-       SET ${updateFields.join(', ')}
-       OUTPUT INSERTED.ID as id, INSERTED.Name as name, INSERTED.Description as description, INSERTED.SourceViewName as sourceViewName, INSERTED.Subscript as subscript
-       WHERE ID = @id`,
-      params
+      `EXEC usp_UpdateQuestionSetHeader 
+       @id = @id,
+       @name = @name,
+       @description = @description,
+       @sourceViewName = @sourceViewName,
+       @subscript = @subscript`,
+      {
+        id,
+        name: data.name?.trim() || null,
+        description: data.description || null,
+        sourceViewName: data.sourceViewName || null,
+        subscript: data.subscript || null
+      }
     );
 
     return result.length > 0 ? result[0] : null;

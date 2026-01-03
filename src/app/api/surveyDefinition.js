@@ -35,7 +35,7 @@ const survey = {
             {
               type: "radiogroup",
               name: "solarType",
-              title: "Solar Typexx",
+              title: "Solar Type",
               isRequired: false,
               visible: true,
               propertyAttributeID: 123456,
@@ -60,7 +60,7 @@ const survey = {
               propertyAttributeID: 123456,
               fieldName: "Int01",
               hideNumber: true,
-              defaultValue: 7,
+              defaultValue: 14,
               readOnly: false,
             },
             {

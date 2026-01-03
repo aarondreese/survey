@@ -1,12 +1,15 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
+import { QuestionSetHeader } from "@/types/questionsets";
+import HomeButton from "@/components/HomeButton";
 
 interface QuestionSetFormData {
   name: string;
   description: string;
   sourceViewName: string;
+  subscript: string;
 }
 
 interface DatabaseView {
@@ -15,14 +18,22 @@ interface DatabaseView {
   fullName: string;
 }
 
-export default function NewQuestionSetPage() {
+export default function EditQuestionSetPage() {
   const router = useRouter();
+  const params = useParams();
+  const questionSetId = params?.id as string;
+
   const [formData, setFormData] = useState<QuestionSetFormData>({
     name: "",
     description: "",
     sourceViewName: "",
+    subscript: "",
   });
+  const [originalData, setOriginalData] = useState<QuestionSetHeader | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [errors, setErrors] = useState<Partial<QuestionSetFormData>>({});
 
   // State for searchable dropdown
@@ -33,10 +44,59 @@ export default function NewQuestionSetPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetch database views on component mount
+  // Fetch question set data and database views on component mount
   useEffect(() => {
-    fetchDatabaseViews();
-  }, []);
+    const fetchQuestionSetData = async () => {
+      try {
+        setInitialLoading(true);
+        const response = await fetch(`/api/questionsets/${questionSetId}`);
+        if (response.ok) {
+          const result = await response.json();
+          const questionSet = result.data;
+          setOriginalData(questionSet);
+          setFormData({
+            name: questionSet.name || "",
+            description: questionSet.description || "",
+            sourceViewName: questionSet.sourceViewName || "",
+            subscript: questionSet.subscript || "",
+          });
+          setSearchTerm(questionSet.sourceViewName || "");
+        } else {
+          console.error("Failed to fetch question set data");
+          alert("Failed to load question set data");
+          router.push("/questionsets");
+        }
+      } catch (error) {
+        console.error("Error fetching question set:", error);
+        alert("Error loading question set data");
+        router.push("/questionsets");
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    const fetchDatabaseViews = async () => {
+      setViewsLoading(true);
+      try {
+        const response = await fetch("/api/database-views");
+        if (response.ok) {
+          const data = await response.json();
+          setViews(data.views || []);
+        } else {
+          console.error("Failed to fetch database views");
+        }
+      } catch (error) {
+        console.error("Error fetching database views:", error);
+      } finally {
+        setViewsLoading(false);
+      }
+    };
+
+    if (questionSetId) {
+      fetchQuestionSetData();
+      fetchDatabaseViews();
+    }
+  }, [questionSetId, router]);
 
   // Handle clicks outside dropdown to close it
   useEffect(() => {
@@ -64,23 +124,6 @@ export default function NewQuestionSetPage() {
     );
     setFilteredViews(filtered);
   }, [views, searchTerm]);
-
-  const fetchDatabaseViews = async () => {
-    setViewsLoading(true);
-    try {
-      const response = await fetch("/api/database-views");
-      if (response.ok) {
-        const data = await response.json();
-        setViews(data.views || []);
-      } else {
-        console.error("Failed to fetch database views");
-      }
-    } catch (error) {
-      console.error("Error fetching database views:", error);
-    } finally {
-      setViewsLoading(false);
-    }
-  };
 
   const handleViewSelect = (view: DatabaseView) => {
     setFormData((prev) => ({
@@ -118,7 +161,9 @@ export default function NewQuestionSetPage() {
   };
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
   ) => {
     const { name, value } = e.target;
 
@@ -168,41 +213,36 @@ export default function NewQuestionSetPage() {
     setLoading(true);
 
     try {
-      const requestData = {
-        ...formData,
-        createdDate: new Date().toISOString(),
-      };
+      console.log("Sending request to update question set:", formData);
 
-      console.log("Sending request to create question set:", requestData);
-
-      const response = await fetch("/api/questionsets", {
-        method: "POST",
+      const response = await fetch(`/api/questionsets/${questionSetId}`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestData),
+        body: JSON.stringify(formData),
       });
 
       console.log("Response status:", response.status);
       console.log("Response ok:", response.ok);
 
       if (response.ok) {
-        const result = await response.json(); // Get the created question set data
-        console.log("Question set created successfully:", result);
-        // Redirect to configuration page to set up questions from the view columns
-        router.push(`/questionsets/${result.data.id}/configure`);
+        const result = await response.json();
+        console.log("Question set updated successfully:", result);
+        // Redirect back to question sets list
+        router.push("/questionsets");
       } else {
         const errorData = await response.json();
         console.error("Error response:", errorData);
         alert(
-          `Error creating question set: ${errorData.error || "Unknown error"}${
+          `Error updating question set: ${errorData.error || "Unknown error"}${
             errorData.details ? `\nDetails: ${errorData.details}` : ""
           }`
         );
       }
     } catch (error) {
-      console.error("Error creating question set:", error);
-      alert("Error creating question set. Please try again.");
+      console.error("Error updating question set:", error);
+      alert("Error updating question set. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -212,22 +252,61 @@ export default function NewQuestionSetPage() {
     router.push("/questionsets");
   };
 
+  if (initialLoading) {
+    return (
+      <div className="mx-auto p-6 max-w-2xl">
+        <div className="text-center">Loading question set data...</div>
+      </div>
+    );
+  }
+
+  if (!originalData) {
+    return (
+      <div className="mx-auto p-6 max-w-2xl">
+        <div className="text-red-600 text-center">Question set not found</div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto p-6 max-w-2xl">
+      <HomeButton />
+
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2 text-gray-600 text-sm">
           <Link href="/questionsets" className="hover:text-blue-600">
             Question Sets
           </Link>
           <span>/</span>
-          <span>New Question Set</span>
+          <span>Edit Question Set</span>
         </div>
-        <h1 className="font-bold text-2xl">Create New Question Set</h1>
+        <h1 className="font-bold text-2xl">Edit Question Set</h1>
+        <p className="mt-1 text-gray-600">ID: {questionSetId}</p>
       </div>
 
       <div className="bg-white shadow-md p-6 rounded-lg">
         <form onSubmit={handleSubmit}>
           <div className="space-y-6">
+            {/* ID Field (Read-only) */}
+            <div>
+              <label
+                htmlFor="id"
+                className="block mb-2 font-medium text-gray-700 text-sm"
+              >
+                Question Set ID
+              </label>
+              <input
+                type="text"
+                id="id"
+                value={questionSetId}
+                readOnly
+                className="bg-gray-100 px-3 py-2 border border-gray-300 rounded-lg w-full text-gray-600"
+              />
+              <p className="mt-1 text-gray-500 text-sm">
+                This field cannot be changed
+              </p>
+            </div>
+
             {/* Name Field */}
             <div>
               <label
@@ -345,6 +424,29 @@ export default function NewQuestionSetPage() {
                 question data
               </p>
             </div>
+
+            {/* Subscript Field */}
+            <div>
+              <label
+                htmlFor="subscript"
+                className="block mb-2 font-medium text-gray-700 text-sm"
+              >
+                Subscript
+              </label>
+              <input
+                type="text"
+                id="subscript"
+                name="subscript"
+                value={formData.subscript}
+                onChange={handleInputChange}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                placeholder="Enter subscript (e.g., Standard, Premium, etc.)"
+                disabled={loading}
+              />
+              <p className="mt-1 text-gray-500 text-sm">
+                Enter a type/category identifier for this question set
+              </p>
+            </div>
           </div>
 
           {/* Form Actions */}
@@ -383,7 +485,7 @@ export default function NewQuestionSetPage() {
                   />
                 </svg>
               )}
-              {loading ? "Creating..." : "Create Question Set"}
+              {loading ? "Updating..." : "Update Question Set"}
             </button>
           </div>
         </form>

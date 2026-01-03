@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
+import React, { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface SurveyTemplateHeader {
   id: number;
@@ -18,16 +18,17 @@ export default function EditSurveyTemplatePage() {
   const router = useRouter();
   const surveyId = params.id as string;
 
-  const [surveyTemplate, setSurveyTemplate] = useState<SurveyTemplateHeader | null>(null);
+  const [surveyTemplate, setSurveyTemplate] =
+    useState<SurveyTemplateHeader | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Form fields
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [entityType, setEntityType] = useState('');
-  const [pageSplit, setPageSplit] = useState('');
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [entityType, setEntityType] = useState("");
+  const [pageSplit, setPageSplit] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const fetchSurveyTemplate = React.useCallback(async () => {
@@ -37,23 +38,25 @@ export default function EditSurveyTemplatePage() {
 
       const response = await fetch(`/api/surveys/${surveyId}`);
       if (!response.ok) {
-        throw new Error('Failed to fetch survey template');
+        throw new Error("Failed to fetch survey template");
       }
 
       const data = await response.json();
       if (data.success && data.data) {
         const template = data.data;
         setSurveyTemplate(template);
-        setName(template.name || '');
-        setDescription(template.description || '');
-        setEntityType(template.entityType || '');
-        setPageSplit(template.pageSplit || '');
+        setName(template.name || "");
+        setDescription(template.description || "");
+        setEntityType(template.entityType || "");
+        setPageSplit(template.pageSplit || "");
         setIsActive(template.isActive !== false);
       } else {
-        throw new Error('Survey template not found');
+        throw new Error("Survey template not found");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load survey template');
+      setError(
+        err instanceof Error ? err.message : "Failed to load survey template"
+      );
     } finally {
       setLoading(false);
     }
@@ -67,19 +70,19 @@ export default function EditSurveyTemplatePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!name.trim()) {
-      setError('Survey template name is required');
+      setError("Survey template name is required");
       return;
     }
 
     if (!entityType.trim()) {
-      setError('Entity type is required');
+      setError("Entity type is required");
       return;
     }
 
     if (!pageSplit.trim()) {
-      setError('Page split is required');
+      setError("Page split is required");
       return;
     }
 
@@ -92,13 +95,13 @@ export default function EditSurveyTemplatePage() {
         description: description.trim() || null,
         entityType: entityType.trim(),
         pageSplit: pageSplit.trim(),
-        isActive
+        isActive,
       };
 
       const response = await fetch(`/api/surveys/${surveyId}`, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(surveyData),
       });
@@ -106,16 +109,18 @@ export default function EditSurveyTemplatePage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to update survey template');
+        throw new Error(result.error || "Failed to update survey template");
       }
 
       if (result.success) {
-        router.push('/surveys');
+        router.push("/surveys");
       } else {
-        throw new Error(result.error || 'Failed to update survey template');
+        throw new Error(result.error || "Failed to update survey template");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update survey template');
+      setError(
+        err instanceof Error ? err.message : "Failed to update survey template"
+      );
     } finally {
       setSaving(false);
     }
@@ -123,7 +128,7 @@ export default function EditSurveyTemplatePage() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="mx-auto p-6 max-w-2xl">
         <div className="text-center">Loading survey template...</div>
       </div>
     );
@@ -131,9 +136,9 @@ export default function EditSurveyTemplatePage() {
 
   if (error && !surveyTemplate) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
-        <div className="text-center text-red-600">Error: {error}</div>
-        <div className="text-center mt-4">
+      <div className="mx-auto p-6 max-w-2xl">
+        <div className="text-red-600 text-center">Error: {error}</div>
+        <div className="mt-4 text-center">
           <Link href="/surveys" className="text-blue-600 hover:underline">
             Back to Survey Templates
           </Link>
@@ -143,34 +148,48 @@ export default function EditSurveyTemplatePage() {
   }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="mx-auto p-6 max-w-2xl">
       {/* Breadcrumb */}
       <div className="mb-6">
-        <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+        <div className="flex items-center gap-2 mb-2 text-gray-600 text-sm">
           <Link href="/surveys" className="hover:text-blue-600">
             Survey Templates
           </Link>
           <span>›</span>
-          <span className="text-gray-900">{surveyTemplate?.name || 'Survey Template'}</span>
+          <span className="text-gray-900">
+            {surveyTemplate?.name || "Survey Template"}
+          </span>
           <span>›</span>
           <span className="text-gray-900">Edit</span>
         </div>
-        <h1 className="text-3xl font-bold text-gray-900">Edit Survey Template</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="font-bold text-gray-900 text-3xl">
+          Edit Survey Template
+        </h1>
+        <p className="mt-2 text-gray-600">
           Update the survey template details and settings
         </p>
       </div>
 
       {/* Form */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-white shadow-sm border border-gray-200 rounded-lg">
         <form onSubmit={handleSubmit} className="p-6">
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
+            <div className="bg-red-50 mb-6 p-4 border border-red-200 rounded-md">
               <div className="flex">
-                <svg className="w-5 h-5 text-red-400 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  className="mt-0.5 mr-2 w-5 h-5 text-red-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
-                <div className="text-sm text-red-600">{error}</div>
+                <div className="text-red-600 text-sm">{error}</div>
               </div>
             </div>
           )}
@@ -178,7 +197,10 @@ export default function EditSurveyTemplatePage() {
           <div className="space-y-6">
             {/* Name */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="name"
+                className="block mb-2 font-medium text-gray-700 text-sm"
+              >
                 Survey Template Name *
               </label>
               <input
@@ -186,7 +208,7 @@ export default function EditSurveyTemplatePage() {
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="shadow-sm px-3 py-2 border border-gray-300 focus:border-blue-500 rounded-md focus:outline-none focus:ring-blue-500 w-full"
                 placeholder="Enter survey template name"
                 required
               />
@@ -194,7 +216,10 @@ export default function EditSurveyTemplatePage() {
 
             {/* Description */}
             <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="description"
+                className="block mb-2 font-medium text-gray-700 text-sm"
+              >
                 Description
               </label>
               <textarea
@@ -202,21 +227,24 @@ export default function EditSurveyTemplatePage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="shadow-sm px-3 py-2 border border-gray-300 focus:border-blue-500 rounded-md focus:outline-none focus:ring-blue-500 w-full"
                 placeholder="Enter survey template description (optional)"
               />
             </div>
 
             {/* Entity Type */}
             <div>
-              <label htmlFor="entityType" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="entityType"
+                className="block mb-2 font-medium text-gray-700 text-sm"
+              >
                 Entity Type *
               </label>
               <select
                 id="entityType"
                 value={entityType}
                 onChange={(e) => setEntityType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="shadow-sm px-3 py-2 border border-gray-300 focus:border-blue-500 rounded-md focus:outline-none focus:ring-blue-500 w-full"
                 required
               >
                 <option value="">Select entity type</option>
@@ -229,7 +257,10 @@ export default function EditSurveyTemplatePage() {
 
             {/* Page Split */}
             <div>
-              <label htmlFor="pageSplit" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="pageSplit"
+                className="block mb-2 font-medium text-gray-700 text-sm"
+              >
                 Page Split *
               </label>
               <input
@@ -237,11 +268,11 @@ export default function EditSurveyTemplatePage() {
                 id="pageSplit"
                 value={pageSplit}
                 onChange={(e) => setPageSplit(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="shadow-sm px-3 py-2 border border-gray-300 focus:border-blue-500 rounded-md focus:outline-none focus:ring-blue-500 w-full"
                 placeholder="Enter page split value (e.g., NONE, SinglePage, etc.)"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="mt-1 text-gray-500 text-xs">
                 Specify how the survey should be split across pages
               </p>
             </div>
@@ -253,38 +284,43 @@ export default function EditSurveyTemplatePage() {
                 id="isActive"
                 checked={isActive}
                 onChange={(e) => setIsActive(e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                className="border-gray-300 rounded focus:ring-blue-500 w-4 h-4 text-blue-600"
               />
-              <label htmlFor="isActive" className="ml-2 block text-sm text-gray-700">
+              <label
+                htmlFor="isActive"
+                className="block ml-2 text-gray-700 text-sm"
+              >
                 Active
               </label>
-              <p className="ml-2 text-xs text-gray-500">
-                {isActive ? 'This survey template is active and can be used' : 'This survey template is inactive and cannot be used'}
+              <p className="ml-2 text-gray-500 text-xs">
+                {isActive
+                  ? "This survey template is active and can be used"
+                  : "This survey template is inactive and cannot be used"}
               </p>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-6 mt-6 border-t border-gray-200">
+          <div className="flex justify-between items-center mt-6 pt-6 border-gray-200 border-t">
             <Link
               href="/surveys"
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="bg-white hover:bg-gray-50 shadow-sm px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 font-medium text-gray-700 text-sm"
             >
               Cancel
             </Link>
             <div className="flex items-center gap-3">
               <Link
                 href={`/surveys/${surveyId}/configure`}
-                className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="bg-blue-50 hover:bg-blue-100 px-4 py-2 border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 font-medium text-blue-600 text-sm"
               >
                 Configure Questions
               </Link>
               <button
                 type="submit"
                 disabled={saving}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 shadow-sm px-4 py-2 border border-transparent rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 font-medium text-white text-sm disabled:cursor-not-allowed"
               >
-                {saving ? 'Saving...' : 'Save Changes'}
+                {saving ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>

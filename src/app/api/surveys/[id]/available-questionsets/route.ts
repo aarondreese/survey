@@ -31,6 +31,8 @@ export async function GET(
         SELECT stq.QuestionSetHeaderID 
         FROM SurveyTemplateQuestion stq 
         WHERE stq.SurveyTemplateHeaderID = @surveyId 
+        AND stq.QuestionType = 'QuestionSet'
+        AND stq.QuestionSetHeaderID IS NOT NULL
         AND stq.isActive = 1
       )
       ORDER BY qsh.Name ASC

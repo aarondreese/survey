@@ -27,6 +27,7 @@ DB_TRUST_SERVER_CERTIFICATE=true
 ```
 
 2. **Database Schema**: Ensure your MSSQL database has the following tables:
+
    - `QuestionSetHeader`: Stores question set information
    - `QuestionSetQuestion`: Stores individual questions within question sets
 

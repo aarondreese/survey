@@ -17,12 +17,14 @@ export async function GET(
 
     const db = await getDatabase();
 
-    // Get survey template questions with enriched data from QuestionSetHeader and QuestionSetQuestions
+    // Get survey template questions with enriched data (both QuestionSets and MetaQuestions)
     const query = `
       SELECT 
         stq.ID as id,
         stq.SurveyTemplateHeaderID as surveyTemplateHeaderId,
+        stq.QuestionType as questionType,
         stq.QuestionSetHeaderID as questionSetHeaderId,
+        stq.MetaQuestionHeaderID as metaQuestionHeaderId,
         stq.SortOrder as sortOrder,
         stq.isActive,
         -- QuestionSetHeader data
@@ -30,73 +32,96 @@ export async function GET(
         qsh.Description as questionSetDescription,
         qsh.SourceViewName as sourceViewName,
         qsh.subscript,
-        -- Count of questions in this question set
-        (SELECT COUNT(*) FROM QuestionSetQuestion qsq WHERE qsq.QuestionSetHeaderID = stq.QuestionSetHeaderID AND qsq.isVisible = 1) as questionCount
+        -- MetaQuestionHeader data
+        mqh.Description as metaQuestionDescription,
+        -- Counts
+        (SELECT COUNT(*) FROM QuestionSetQuestion qsq WHERE qsq.QuestionSetHeaderID = stq.QuestionSetHeaderID AND qsq.isVisible = 1) as questionCount,
+        (SELECT COUNT(*) FROM MetaQuestionAnswer mqa WHERE mqa.MetaQuestionHeaderID = stq.MetaQuestionHeaderID) as answerCount
       FROM SurveyTemplateQuestion stq
       LEFT JOIN QuestionSetHeader qsh ON stq.QuestionSetHeaderID = qsh.ID
+      LEFT JOIN MetaQuestionHeader mqh ON stq.MetaQuestionHeaderID = mqh.ID
       WHERE stq.SurveyTemplateHeaderID = @surveyId
       ORDER BY stq.SortOrder ASC, stq.ID ASC
     `;
 
-    const request = db.request();
-    request.input('surveyId', sql.Int, parseInt(surveyId));
-    const result = await request.query(query);
+    const queryRequest = db.request();
+    queryRequest.input('surveyId', sql.Int, parseInt(surveyId));
+    const result = await queryRequest.query(query);
 
     // Get detailed questions for each question set
     const templateQuestions = [];
     
     for (const row of result.recordset) {
-      // Get questions for this question set
-      const questionsQuery = `
-        SELECT 
-          ID as id,
-          QuestionSetHeaderID as questionSetHeaderId,
-          FieldName as fieldName,
-          AttributeLabel as attributeLabel,
-          SurveyLabel as surveyLabel,
-          DisplayType as displayType,
-          Choices as choices,
-          Description as description,
-          isRequired,
-          isVisible,
-          SortOrder as sortOrder
-        FROM QuestionSetQuestion
-        WHERE QuestionSetHeaderID = @questionSetHeaderId
-          AND isVisible = 1
-        ORDER BY SortOrder ASC, ID ASC
-      `;
+      if (row.questionType === 'QuestionSet' && row.questionSetHeaderId) {
+        // Get questions for this question set
+        const questionsQuery = `
+          SELECT 
+            ID as id,
+            QuestionSetHeaderID as questionSetHeaderId,
+            FieldName as fieldName,
+            AttributeLabel as attributeLabel,
+            SurveyLabel as surveyLabel,
+            DisplayType as displayType,
+            Choices as choices,
+            Description as description,
+            isRequired,
+            isVisible,
+            SortOrder as sortOrder
+          FROM QuestionSetQuestion
+          WHERE QuestionSetHeaderID = @questionSetHeaderId
+            AND isVisible = 1
+          ORDER BY SortOrder ASC, ID ASC
+        `;
 
-      const questionsRequest = db.request();
-      questionsRequest.input('questionSetHeaderId', sql.Int, row.questionSetHeaderId);
-      const questionsResult = await questionsRequest.query(questionsQuery);
+        const questionsRequest = db.request();
+        questionsRequest.input('questionSetHeaderId', sql.Int, row.questionSetHeaderId);
+        const questionsResult = await questionsRequest.query(questionsQuery);
 
-      templateQuestions.push({
-        id: row.id,
-        surveyTemplateHeaderId: row.surveyTemplateHeaderId,
-        questionSetHeaderId: row.questionSetHeaderId,
-        sortOrder: row.sortOrder,
-        isActive: row.isActive,
-        questionSetHeader: {
-          id: row.questionSetHeaderId,
-          name: row.questionSetName,
-          description: row.questionSetDescription,
-          sourceViewName: row.sourceViewName,
-          subscript: row.subscript
-        },
-        questions: questionsResult.recordset.map(q => ({
-          id: q.id,
-          questionSetHeaderId: q.questionSetHeaderId,
-          fieldName: q.fieldName,
-          attributeLabel: q.attributeLabel,
-          surveyLabel: q.surveyLabel,
-          displayType: q.displayType,
-          choices: q.choices,
-          description: q.description,
-          isRequired: q.isRequired,
-          isVisible: q.isVisible,
-          sortOrder: q.sortOrder
-        }))
-      });
+        templateQuestions.push({
+          id: row.id,
+          surveyTemplateHeaderId: row.surveyTemplateHeaderId,
+          questionType: 'QuestionSet',
+          questionSetHeaderId: row.questionSetHeaderId,
+          metaQuestionHeaderId: null,
+          sortOrder: row.sortOrder,
+          isActive: row.isActive,
+          questionSetHeader: {
+            id: row.questionSetHeaderId,
+            name: row.questionSetName,
+            description: row.questionSetDescription,
+            sourceViewName: row.sourceViewName,
+            subscript: row.subscript
+          },
+          questions: questionsResult.recordset.map((q: any) => ({
+            id: q.id,
+            questionSetHeaderId: q.questionSetHeaderId,
+            fieldName: q.fieldName,
+            attributeLabel: q.attributeLabel,
+            surveyLabel: q.surveyLabel,
+            displayType: q.displayType,
+            choices: q.choices,
+            description: q.description,
+            isRequired: q.isRequired,
+            isVisible: q.isVisible,
+            sortOrder: q.sortOrder
+          }))
+        });
+      } else if (row.questionType === 'MetaQuestion' && row.metaQuestionHeaderId) {
+        templateQuestions.push({
+          id: row.id,
+          surveyTemplateHeaderId: row.surveyTemplateHeaderId,
+          questionType: 'MetaQuestion',
+          questionSetHeaderId: null,
+          metaQuestionHeaderId: row.metaQuestionHeaderId,
+          sortOrder: row.sortOrder,
+          isActive: row.isActive,
+          metaQuestionHeader: {
+            id: row.metaQuestionHeaderId,
+            description: row.metaQuestionDescription
+          },
+          answerCount: row.answerCount || 0
+        });
+      }
     }
 
     return NextResponse.json({

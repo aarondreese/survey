@@ -37,6 +37,7 @@ export interface CreateQuestionSetRequest {
   name: string;
   description?: string;
   sourceViewName?: string;
+  subscript?: string;
 }
 
 export interface UpdateQuestionSetRequest extends Partial<CreateQuestionSetRequest> {
