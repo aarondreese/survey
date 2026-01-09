@@ -11,6 +11,35 @@ import { Model } from "survey-core";
 import { LayeredLight } from "survey-core/themes";
 import "survey-core/survey-core.min.css";
 
+const REQUIRED_IMAGE_PLACEHOLDER =
+  "https://placehold.co/600x400?text=Image+Required";
+const OPTIONAL_IMAGE_PLACEHOLDER =
+  "https://placehold.co/600x400?text=Image+Preview";
+const PHOTO_CAPTURE_PLACEHOLDER = "Tap to capture photo";
+
+const extractSampleImageValue = (
+  records: Record<string, unknown>[],
+  fieldName: string
+): string => {
+  for (const record of records) {
+    const value = record[fieldName];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed !== "") {
+        return trimmed;
+      }
+    }
+  }
+
+  return "";
+};
+
+const toHttpUrlOrEmpty = (value?: string): string => {
+  if (!value) return "";
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : "";
+};
+
 export default function QuestionSetsPage() {
   const [questionSets, setQuestionSets] = useState<QuestionSetHeader[]>([]);
   const [selectedQuestionSet, setSelectedQuestionSet] =
@@ -63,6 +92,7 @@ export default function QuestionSetsPage() {
     const enabledQuestions = questionsList.filter((q) => q.isVisible);
 
     const surveyElements = enabledQuestions.map((question) => {
+      const normalizedDisplayType = question.displayType.toLowerCase();
       const element: Record<string, unknown> = {
         type: getSurveyJSType(question.displayType),
         name: question.fieldName,
@@ -72,12 +102,12 @@ export default function QuestionSetsPage() {
       };
 
       // Set inputType for date fields
-      if (question.displayType.toLowerCase() === "date") {
+      if (normalizedDisplayType === "date") {
         element.inputType = "date";
       }
 
       // Set inputType for number fields
-      if (question.displayType.toLowerCase() === "number") {
+      if (normalizedDisplayType === "number") {
         element.inputType = "number";
       }
 
@@ -171,9 +201,52 @@ export default function QuestionSetsPage() {
       }
 
       // Handle numeric ranges
-      if (question.displayType === "number") {
+      if (normalizedDisplayType === "number") {
         if (question.minValue !== undefined) element.min = question.minValue;
         if (question.maxValue !== undefined) element.max = question.maxValue;
+      }
+
+      if (normalizedDisplayType === "image") {
+        if (question.isReadOnly) {
+          const sampleImage = extractSampleImageValue(
+            sourceData,
+            question.fieldName
+          );
+          const placeholderAsUrl = toHttpUrlOrEmpty(question.placeholder);
+          const fallbackImage = question.isRequired
+            ? REQUIRED_IMAGE_PLACEHOLDER
+            : OPTIONAL_IMAGE_PLACEHOLDER;
+          const imageLink = sampleImage || placeholderAsUrl || fallbackImage;
+
+          element.type = "image";
+          element.imageLink = imageLink;
+          element.imageAltText =
+            question.surveyLabel || question.attributeLabel || question.fieldName;
+          element.contentMode = "image";
+          element.imageFit = "contain";
+          element.imageHeight = "240px";
+          element.imageWidth = "100%";
+        } else {
+          const capturePlaceholder =
+            question.placeholder ||
+            `${PHOTO_CAPTURE_PLACEHOLDER} for ${
+              question.surveyLabel ||
+              question.attributeLabel ||
+              question.fieldName
+            }`;
+
+          element.type = "file";
+          element.acceptedCategories = ["image"];
+          element.acceptedTypes = "image/*";
+          element.allowMultiple = false;
+          element.maxFiles = 1;
+          element.allowImagesPreview = true;
+          element.sourceType = "camera";
+          element.waitForUpload = true;
+          element.fileOrPhotoPlaceholder = capturePlaceholder;
+          element.photoPlaceholder = capturePlaceholder;
+          element.storeDataAsText = false;
+        }
       }
 
       return element;
@@ -203,6 +276,7 @@ export default function QuestionSetsPage() {
       radio: "radiogroup",
       checkbox: "checkbox",
       rating: "rating",
+      image: "image",
     };
 
     return typeMap[displayType.toLowerCase()] || "text";

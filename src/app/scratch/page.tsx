@@ -16,9 +16,7 @@ export default function ScratchPage() {
   const [loading, setLoading] = useState(false);
   const [surveyJson, setSurveyJson] = useState<object | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rawPages, setRawPages] = useState<
-    Array<{ ID: number; JSONText: string }>
-  >([]);
+  const [rawPages, setRawPages] = useState<{ ID: number; JSONText: string }[]>([]);
 
   useEffect(() => {
     fetchTemplates();
@@ -234,6 +232,58 @@ export default function ScratchPage() {
       }
     }
 
+    // Handle image fields - convert to camera capture if editable
+    if (element.type === "image") {
+      const isReadOnly = element.readOnly === true;
+      
+      if (isReadOnly) {
+        // Read-only: keep as image type, ensure imageLink is set
+        if (!element.imageLink && element.currentValue) {
+          element.imageLink = element.currentValue;
+        }
+        element.contentMode = "image";
+      } else {
+        // Editable: convert to file type with camera capture
+        element.type = "file";
+        element.sourceType = "file-camera"; // Allow both camera and file selection
+        element.acceptedTypes = "image/*";
+        element.storeDataAsText = true;
+        element.allowImagesPreview = true;
+        element.photoPlaceholder = "Tap to capture photo";
+        element.filePlaceholder = "Choose file or take photo";
+        element.imageWidth = "600px";
+        element.imageHeight = "400px";
+        
+        // If there's an existing image, set it as initial value in surveyData
+        const imageData = element.currentValue || element.imageLink;
+        if (imageData && imageData.trim() !== '') {
+          const formattedImage = imageData.startsWith('data:') ? imageData : `data:image/jpeg;base64,${imageData}`;
+          
+          // Check if we have actual image data (not just the header)
+          const hasActualData = formattedImage.length > 'data:image/jpeg;base64,'.length + 10;
+          
+          if (hasActualData) {
+            // Only set in surveyData if we have a valid image with content
+            surveyData[element.name] = [{
+              name: "existing-image.jpg",
+              type: "image/jpeg",
+              content: formattedImage
+            }];
+            
+            console.log("Set existing image for", element.name, "- length:", formattedImage.length);
+          } else {
+            console.log("Image data too short for", element.name, "- treating as empty");
+          }
+        } else {
+          console.log("No existing image for", element.name, "- showing upload buttons");
+        }
+        
+        delete element.imageLink;
+        delete element.contentMode;
+        delete element.currentValue; // Remove currentValue since we've moved it to surveyData
+      }
+    }
+
     // DON'T delete currentValue or defaultValue - preserve them for future use
     // Only clean up page-level properties that shouldn't be on elements
     delete element.instance;
@@ -281,73 +331,75 @@ export default function ScratchPage() {
 
       // Parse all pages from API
       const parsedPages = data.pages
-        .map((page: { 
-          ID: number; 
-          JSONText: string; 
-          ParsedJSON: any;
-          PageSplit: boolean;
-          PageSplitIdentifier: string | null;
-          InstanceID: number | null;
-          AttributeID: number | null;
-        }) => {
-          console.log(
-            "Processing raw page:",
-            page.ID,
-            "InstanceID:",
-            page.InstanceID,
-            "AttributeID:",
-            page.AttributeID,
-            "PageSplit:",
-            page.PageSplit,
-            "PageSplitIdentifier:",
-            page.PageSplitIdentifier,
-            "ParsedJSON:",
-            page.ParsedJSON
-          );
-          if (!page.ParsedJSON) {
-            console.error("Page missing ParsedJSON property:", page);
-            return null;
-          }
-
-          const pageData = Array.isArray(page.ParsedJSON)
-            ? page.ParsedJSON[0]
-            : page.ParsedJSON;
-
-          // Extract instance and attributeId - prefer API level, fallback to ParsedJSON
-          const instanceId = page.InstanceID ?? pageData.instance;
-          const attributeId = page.AttributeID ?? pageData.attributeId;
-          const pageSplit = page.PageSplit;
-          const pageSplitIdentifier = page.PageSplitIdentifier;
-
-          console.log(
-            "Page ID:",
-            page.ID,
-            "- instance:",
-            instanceId,
-            "pageSplit:",
-            pageSplit,
-            "pageSplitIdentifier:",
-            pageSplitIdentifier
-          );
-          console.log("Page elements count:", pageData.elements?.length);
-
-          // Log first element to see structure
-          if (pageData.elements && pageData.elements.length > 0) {
+        .map(
+          (page: {
+            ID: number;
+            JSONText: string;
+            ParsedJSON: any;
+            PageSplit: boolean;
+            PageSplitIdentifier: string | null;
+            InstanceID: number | null;
+            AttributeID: number | null;
+          }) => {
             console.log(
-              "First element in page:",
-              JSON.stringify(pageData.elements[0], null, 2)
+              "Processing raw page:",
+              page.ID,
+              "InstanceID:",
+              page.InstanceID,
+              "AttributeID:",
+              page.AttributeID,
+              "PageSplit:",
+              page.PageSplit,
+              "PageSplitIdentifier:",
+              page.PageSplitIdentifier,
+              "ParsedJSON:",
+              page.ParsedJSON
             );
-          }
+            if (!page.ParsedJSON) {
+              console.error("Page missing ParsedJSON property:", page);
+              return null;
+            }
 
-          return {
-            rawPageId: page.ID,
-            pageData,
-            instanceId,
-            attributeId,
-            pageSplit,
-            pageSplitIdentifier,
-          };
-        })
+            const pageData = Array.isArray(page.ParsedJSON)
+              ? page.ParsedJSON[0]
+              : page.ParsedJSON;
+
+            // Extract instance and attributeId - prefer API level, fallback to ParsedJSON
+            const instanceId = page.InstanceID ?? pageData.instance;
+            const attributeId = page.AttributeID ?? pageData.attributeId;
+            const pageSplit = page.PageSplit;
+            const pageSplitIdentifier = page.PageSplitIdentifier;
+
+            console.log(
+              "Page ID:",
+              page.ID,
+              "- instance:",
+              instanceId,
+              "pageSplit:",
+              pageSplit,
+              "pageSplitIdentifier:",
+              pageSplitIdentifier
+            );
+            console.log("Page elements count:", pageData.elements?.length);
+
+            // Log first element to see structure
+            if (pageData.elements && pageData.elements.length > 0) {
+              console.log(
+                "First element in page:",
+                JSON.stringify(pageData.elements[0], null, 2)
+              );
+            }
+
+            return {
+              rawPageId: page.ID,
+              pageData,
+              instanceId,
+              attributeId,
+              pageSplit,
+              pageSplitIdentifier,
+            };
+          }
+        )
         .filter((p: any) => p !== null);
 
       // Group pages by pageSplitIdentifier
@@ -356,12 +408,17 @@ export default function ScratchPage() {
       parsedPages.forEach((p: any) => {
         // Normalize the identifier - treat empty string, null, undefined as null
         let identifier = p.pageSplitIdentifier;
-        if (!identifier || identifier.trim() === '') {
+        if (!identifier || identifier.trim() === "") {
           identifier = null;
         }
-        
-        console.log("Grouping page ID:", p.rawPageId, "with identifier:", identifier);
-        
+
+        console.log(
+          "Grouping page ID:",
+          p.rawPageId,
+          "with identifier:",
+          identifier
+        );
+
         if (!pageGroups.has(identifier)) {
           pageGroups.set(identifier, []);
         }
@@ -370,7 +427,10 @@ export default function ScratchPage() {
 
       console.log("Page groups:", pageGroups);
       pageGroups.forEach((group, identifier) => {
-        console.log(`Group "${identifier}": ${group.length} pages`, group.map((p: any) => `ID:${p.rawPageId} instance:${p.instanceId}`));
+        console.log(
+          `Group "${identifier}": ${group.length} pages`,
+          group.map((p: any) => `ID:${p.rawPageId} instance:${p.instanceId}`)
+        );
       });
 
       // Build Survey.js pages structure
@@ -404,7 +464,9 @@ export default function ScratchPage() {
               name: `panel_${assetId}_${instanceId}`,
               title:
                 instanceId !== undefined && instanceId !== null
-                  ? `${pageData.title || pageData.name || "Section"} [${instanceId}]`
+                  ? `${
+                      pageData.title || pageData.name || "Section"
+                    } [${instanceId}]`
                   : pageData.title || pageData.name || "Section",
               elements: [],
             };
@@ -494,24 +556,24 @@ export default function ScratchPage() {
           gap: 1rem !important;
           width: 100% !important;
         }
-        
+
         /* Reset any default margins */
         .sd-footer .sd-btn {
           margin: 0 !important;
         }
-        
+
         /* Previous button ALWAYS Row 1, Column 1 (left) */
         .sd-navigation__prev-btn {
           grid-column: 1 !important;
           grid-row: 1 !important;
         }
-        
+
         /* Next button ALWAYS Row 1, Column 3 (right) */
         .sd-navigation__next-btn {
           grid-column: 3 !important;
           grid-row: 1 !important;
         }
-        
+
         /* Complete button ALWAYS Row 2, spans all columns, full width */
         .sd-navigation__complete-btn {
           grid-column: 1 / -1 !important;
@@ -519,7 +581,7 @@ export default function ScratchPage() {
           width: 100% !important;
         }
       `}</style>
-      
+
       <HomeButton />
 
       <div className="mb-6">

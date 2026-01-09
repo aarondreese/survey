@@ -52,7 +52,31 @@ interface SurveyElement {
   max?: number;
   choices?: Array<{ value: number; text: string }>;
   colCount?: number;
+  imageLink?: string;
+  imageAltText?: string;
+  html?: string;
+  contentMode?: string;
+  imageFit?: string;
+  imageHeight?: string | number;
+  imageWidth?: string | number;
+  acceptedCategories?: string[];
+  acceptedTypes?: string;
+  allowMultiple?: boolean;
+  maxFiles?: number;
+  waitForUpload?: boolean;
+  allowImagesPreview?: boolean;
+  sourceType?: string;
+  filePlaceholder?: string;
+  photoPlaceholder?: string;
+  fileOrPhotoPlaceholder?: string;
+  storeDataAsText?: boolean;
 }
+
+const REQUIRED_IMAGE_PLACEHOLDER =
+  "https://placehold.co/600x400?text=Image+Required";
+const OPTIONAL_IMAGE_PLACEHOLDER =
+  "https://placehold.co/600x400?text=Image+Preview";
+const PHOTO_CAPTURE_PLACEHOLDER = "Tap to capture photo";
 
 export default function ConfigureQuestionsPage() {
   const router = useRouter();
@@ -88,9 +112,12 @@ export default function ConfigureQuestionsPage() {
 
       // Infer display type from field name (remove digits from end)
       const fieldNameBase = fieldName.replace(/\d+$/, "").toLowerCase();
+      const fieldNameStartsWithImage = fieldName.trim().toLowerCase().startsWith("image");
 
       let defaultDisplayType = "text";
-      if (hasOptions) {
+      if (fieldNameStartsWithImage) {
+        defaultDisplayType = "image";
+      } else if (hasOptions) {
         defaultDisplayType = "dropdown"; // Default to dropdown for lookup fields
       } else if (fieldNameBase.includes("date") || fieldNameBase === "date") {
         defaultDisplayType = "date";
@@ -340,6 +367,7 @@ export default function ConfigureQuestionsPage() {
     { value: "dropdown", label: "Dropdown" },
     { value: "radio", label: "Radio Buttons" },
     { value: "checkbox", label: "Checkbox" },
+    { value: "image", label: "Image" },
   ];
 
   // Get available display type options based on field characteristics
@@ -348,6 +376,10 @@ export default function ConfigureQuestionsPage() {
     const fieldNameBase = config.fieldName.replace(/\d+$/, "").toLowerCase();
     const isDateField =
       fieldNameBase.includes("date") || fieldNameBase === "date";
+    const fieldNameStartsWithImage = config.fieldName
+      .trim()
+      .toLowerCase()
+      .startsWith("image");
 
     // Date fields should always be restricted to date type only
     if (isDateField) {
@@ -360,8 +392,9 @@ export default function ConfigureQuestionsPage() {
       getFieldOptionsFromView(config.fieldName).length > 0;
 
     // If field has choices (either from config options or source view), restrict to choice-based types
+    let filteredOptions;
     if (hasOptions || hasChoicesFromView) {
-      return allDisplayTypeOptions.filter(
+      filteredOptions = allDisplayTypeOptions.filter(
         (option) =>
           option.value === "dropdown" ||
           option.value === "radio" ||
@@ -369,13 +402,28 @@ export default function ConfigureQuestionsPage() {
       );
     } else {
       // Other fields without choices: exclude dropdown, radio, and checkbox (since they need options)
-      return allDisplayTypeOptions.filter(
+      filteredOptions = allDisplayTypeOptions.filter(
         (option) =>
           option.value !== "dropdown" &&
           option.value !== "radio" &&
           option.value !== "checkbox"
       );
     }
+
+    if (!fieldNameStartsWithImage) {
+      filteredOptions = filteredOptions.filter(
+        (option) => option.value !== "image"
+      );
+    } else if (!filteredOptions.some((option) => option.value === "image")) {
+      const imageOption = allDisplayTypeOptions.find(
+        (option) => option.value === "image"
+      );
+      if (imageOption) {
+        filteredOptions = [...filteredOptions, imageOption];
+      }
+    }
+
+    return filteredOptions;
   };
 
   const parseOptions = (optionsJson: string | undefined): string[] => {
@@ -599,6 +647,33 @@ export default function ConfigureQuestionsPage() {
     [sourceViewData, questionConfigs, parseChoicesForSurvey]
   );
 
+  const getImagePreviewSource = useCallback(
+    (fieldName: string): string => {
+      if (!sourceViewData || sourceViewData.length === 0) {
+        return "";
+      }
+
+      for (const record of sourceViewData) {
+        const value = record[fieldName];
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (trimmed !== "") {
+            return trimmed;
+          }
+        }
+      }
+
+      return "";
+    },
+    [sourceViewData]
+  );
+
+  const toHttpUrlOrEmpty = (value?: string): string => {
+    if (!value) return "";
+    const trimmed = value.trim();
+    return /^https?:\/\//i.test(trimmed) ? trimmed : "";
+  };
+
   // Convert question configurations to SurveyJS format
   const generateSurveyPreview = useCallback(() => {
     const enabledConfigs = questionConfigs.filter(
@@ -703,6 +778,45 @@ export default function ConfigureQuestionsPage() {
               element.type = "checkbox";
             }
             break;
+          case "image": {
+            const capturePlaceholder =
+              config.placeholder ||
+              `${PHOTO_CAPTURE_PLACEHOLDER} for ${
+                config.surveyLabel || config.attributeLabel || config.fieldName
+              }`;
+
+            if (config.isReadOnly) {
+              const imageFromData = getImagePreviewSource(config.fieldName);
+              const placeholderAsUrl = toHttpUrlOrEmpty(config.placeholder);
+              const preferredImage = imageFromData || placeholderAsUrl;
+              const fallbackImage = config.isRequired
+                ? REQUIRED_IMAGE_PLACEHOLDER
+                : OPTIONAL_IMAGE_PLACEHOLDER;
+              const imageLink = preferredImage || fallbackImage;
+
+              element.type = "image";
+              element.imageLink = imageLink;
+              element.imageAltText =
+                config.surveyLabel || config.attributeLabel || config.fieldName;
+              element.contentMode = "image";
+              element.imageFit = "contain";
+              element.imageHeight = "240px";
+              element.imageWidth = "100%";
+            } else {
+              element.type = "file";
+              element.acceptedCategories = ["image"];
+              element.acceptedTypes = "image/*";
+              element.allowMultiple = false;
+              element.maxFiles = 1;
+              element.allowImagesPreview = true;
+              element.sourceType = "camera";
+              element.waitForUpload = true;
+              element.fileOrPhotoPlaceholder = capturePlaceholder;
+              element.photoPlaceholder = capturePlaceholder;
+              element.storeDataAsText = false;
+            }
+            break;
+          }
         }
 
         // Handle column count for radiogroups
@@ -734,6 +848,7 @@ export default function ConfigureQuestionsPage() {
     getFieldOptionsFromView,
     sourceViewData,
     parseChoicesForSurvey,
+    getImagePreviewSource,
   ]);
 
   // Generate survey JSON for preview
