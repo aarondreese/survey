@@ -497,12 +497,7 @@ export default function ScratchPage() {
             const panel: any = {
               type: "panel",
               name: `panel_${assetId}_${instanceId}`,
-              title:
-                instanceId !== undefined && instanceId !== null
-                  ? `${
-                      pageData.title || pageData.name || "Section"
-                    } [${instanceId}]`
-                  : pageData.title || pageData.name || "Section",
+              title: pageData.title || pageData.name || "Section",
               elements: [],
             };
 
@@ -540,9 +535,8 @@ export default function ScratchPage() {
               elements: [],
             };
 
-            // Add instance info to title if exists
+            // Add instance info as description if exists
             if (instanceId !== undefined && instanceId !== null) {
-              surveyPage.title = `${surveyPage.title} (Instance: ${instanceId})`;
               surveyPage.description = `Instance ID: ${instanceId}`;
             }
 
@@ -965,11 +959,14 @@ export default function ScratchPage() {
                           const allButtons = questionElement.querySelectorAll('button, .sd-file__choose-btn, .sd-action-bar-item');
                           
                           allButtons.forEach((button: any, index: number) => {
+                            const buttonText = button.textContent?.toLowerCase() || '';
+                            const buttonTitle = button.title?.toLowerCase() || '';
+                            const buttonClass = button.className?.toLowerCase() || '';
+                            
+                            // Check if this looks like a camera button
                             if (buttonText.includes('photo') || buttonText.includes('camera') || 
                                 buttonTitle.includes('camera') || 
                                 buttonClass.includes('camera')) {
-                              
-                              console.log('Found camera button, hiding and replacing:', button);
                               
                               if (!button.dataset.customHandler) {
                                 button.dataset.customHandler = 'true';
