@@ -103,7 +103,6 @@ export default function CreateSurveyPage() {
         });
       }
     } catch (error) {
-      console.error("Error creating survey:", error);
       setErrors({
         submit: "Network error. Please try again.",
       });

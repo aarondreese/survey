@@ -113,7 +113,6 @@ export default function SurveyConfigurePage() {
       const data = await response.json();
       setAvailableQuestionSets(data.data || []);
     } catch (err) {
-      console.error("Error fetching available question sets:", err);
       setError(
         err instanceof Error
           ? err.message
@@ -136,7 +135,6 @@ export default function SurveyConfigurePage() {
       const data = await response.json();
       setAvailableMetaQuestions(data.data || []);
     } catch (err) {
-      console.error("Error fetching available meta-questions:", err);
       setError(
         err instanceof Error
           ? err.message
@@ -318,10 +316,7 @@ export default function SurveyConfigurePage() {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to reorder question sets");
       }
-
-      console.log("Question sets reordered successfully");
     } catch (err) {
-      console.error("Error reordering question sets:", err);
       setError(
         err instanceof Error ? err.message : "Failed to reorder question sets"
       );

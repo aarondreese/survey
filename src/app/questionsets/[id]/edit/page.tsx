@@ -223,12 +223,8 @@ export default function EditQuestionSetPage() {
         body: JSON.stringify(formData),
       });
 
-      console.log("Response status:", response.status);
-      console.log("Response ok:", response.ok);
-
       if (response.ok) {
         const result = await response.json();
-        console.log("Question set updated successfully:", result);
         // Redirect back to question sets list
         router.push("/questionsets");
       } else {

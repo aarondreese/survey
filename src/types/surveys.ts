@@ -104,3 +104,31 @@ export interface AvailableMetaQuestion {
   description: string;
   answerCount: number;
 }
+
+// Survey Instance Types
+export interface SurveyInstance {
+  ID: number;
+  SurveyTemplateHeaderID: number;
+  EntityReference: string;
+  InstanceCreatedDate: Date;
+  SurveyJSON?: string;
+  CompletedJSON?: string;
+  CompletedDate?: Date;
+  ReviewedDate?: Date;
+  ApprovedDate?: Date;
+  ExportedDate?: Date;
+  ExportPath?: string;
+  ExportFileName?: string;
+}
+
+export interface CreateSurveyInstanceRequest {
+  surveyTemplateHeaderId: number;
+  entityReference: string;
+  surveyJson?: object;
+}
+
+export interface UpdateSurveyInstanceRequest {
+  id: number;
+  completedJson?: object;
+  completedDate?: Date;
+}

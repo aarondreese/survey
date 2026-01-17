@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import HomeButton from "@/components/HomeButton";
+import FullScreenCamera from "@/components/FullScreenCamera";
 import { Survey } from "survey-react-ui";
 import { Model } from "survey-core";
 import { LayeredLight } from "survey-core/themes";
 import "survey-core/survey-core.min.css";
 import type { SurveyTemplateHeader } from "@/types/surveys";
+import type { Address } from "@/types/database";
 
 export default function ScratchPage() {
   const [templates, setTemplates] = useState<SurveyTemplateHeader[]>([]);
@@ -17,9 +19,31 @@ export default function ScratchPage() {
   const [surveyJson, setSurveyJson] = useState<object | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rawPages, setRawPages] = useState<{ ID: number; JSONText: string }[]>([]);
+  const [surveyInstanceId, setSurveyInstanceId] = useState<number | null>(null);
+  const [addressSearch, setAddressSearch] = useState<string>("");
+  const [addressResults, setAddressResults] = useState<Address[]>([]);
+  const [showAddressDropdown, setShowAddressDropdown] = useState<boolean>(false);
+  const [searchingAddress, setSearchingAddress] = useState<boolean>(false);
+  const addressDropdownRef = useRef<HTMLDivElement>(null);
+  const [showCamera, setShowCamera] = useState<boolean>(false);
+  const [currentImageQuestion, setCurrentImageQuestion] = useState<string | null>(null);
+  const surveyModelRef = useRef<Model | null>(null);
 
   useEffect(() => {
     fetchTemplates();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addressDropdownRef.current && !addressDropdownRef.current.contains(event.target as Node)) {
+        setShowAddressDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const fetchTemplates = async () => {
@@ -32,9 +56,120 @@ export default function ScratchPage() {
       // Ensure data is always an array
       setTemplates(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Error fetching templates:", err);
       setTemplates([]);
     }
+  };
+
+  const searchAddresses = async (query: string) => {
+    if (query.trim().length < 2) {
+      setAddressResults([]);
+      setShowAddressDropdown(false);
+      return;
+    }
+
+    try {
+      setSearchingAddress(true);
+      const response = await fetch(`/api/address-search?q=${encodeURIComponent(query)}`);
+      if (!response.ok) throw new Error("Failed to search addresses");
+      
+      const result = await response.json();
+      setAddressResults(result.data || []);
+      setShowAddressDropdown(true);
+    } catch (err) {
+      setAddressResults([]);
+    } finally {
+      setSearchingAddress(false);
+    }
+  };
+
+  const handleAddressSelect = (address: Address) => {
+    if (address.PropertyID) {
+      setAssetId(address.PropertyID);
+      const fullAddress = [
+        address.AddressLine1,
+        address.AddressLine2,
+        address.Town,
+        address.PostCode
+      ].filter(Boolean).join(", ");
+      setAddressSearch(fullAddress);
+      setShowAddressDropdown(false);
+    }
+  };
+
+  // Compress image to reduce size
+  const compressImage = async (dataUrl: string, maxSizeMB: number = 4): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Calculate max dimensions (4MB target with ~70% quality typically needs ~2000px max dimension)
+        const maxDimension = 2000;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = (height / width) * maxDimension;
+            width = maxDimension;
+          } else {
+            width = (width / height) * maxDimension;
+            height = maxDimension;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Try different quality settings to get under target size
+        let quality = 0.7;
+        let compressed = canvas.toDataURL('image/jpeg', quality);
+        
+        // Rough estimate: base64 string length * 0.75 gives bytes
+        while (compressed.length * 0.75 > maxSizeMB * 1024 * 1024 && quality > 0.1) {
+          quality -= 0.1;
+          compressed = canvas.toDataURL('image/jpeg', quality);
+        }
+        
+        resolve(compressed);
+      };
+      
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = dataUrl;
+    });
+  };
+
+  const handleCameraCapture = async (imageDataUrl: string) => {
+    if (currentImageQuestion && surveyModelRef.current) {
+      // Compress the image before saving
+      const compressedImage = await compressImage(imageDataUrl);
+      
+      // Set the captured image to the survey question
+      surveyModelRef.current.setValue(currentImageQuestion, [{
+        name: "camera-capture.jpg",
+        type: "image/jpeg",
+        content: compressedImage
+      }]);
+    }
+    setShowCamera(false);
+    setCurrentImageQuestion(null);
+  };
+
+  const handleCameraClose = () => {
+    setShowCamera(false);
+    setCurrentImageQuestion(null);
+  };
+
+  const openCustomCamera = (questionName: string) => {
+    setCurrentImageQuestion(questionName);
+    setShowCamera(true);
   };
 
   // Helper function to process individual elements
@@ -59,74 +194,25 @@ export default function ScratchPage() {
     element.instanceId = instanceId;
     element.attributeId = attributeId || element.attributeId;
 
-    console.log("Processing element:", element.name);
-    console.log(
-      "  currentValue:",
-      element.currentValue,
-      "(type:",
-      typeof element.currentValue,
-      ")"
-    );
-    console.log(
-      "  defaultValue:",
-      element.defaultValue,
-      "(type:",
-      typeof element.defaultValue,
-      ")"
-    );
-    console.log(
-      "  choices (raw):",
-      element.choices,
-      "(type:",
-      typeof element.choices,
-      ")"
-    );
-
     // Parse choices if it's a string
     let choices = element.choices;
     if (typeof choices === "string") {
       try {
         choices = JSON.parse(choices);
         element.choices = choices; // Update the element with parsed choices
-        console.log("  choices (parsed):", choices);
       } catch (e) {
-        console.error("  Error parsing choices:", e);
         choices = null;
       }
     }
 
-    // Verify choices structure and log each choice
+    // Verify choices structure
     if (choices && Array.isArray(choices)) {
-      console.log("  Choices array has", choices.length, "items:");
-      choices.forEach((choice: any, idx: number) => {
-        console.log(`    [${idx}] Raw choice:`, choice);
-        console.log(
-          `    [${idx}] value:`,
-          choice.value,
-          "Value:",
-          choice.Value,
-          "(type:",
-          typeof (choice.value || choice.Value),
-          ")"
-        );
-        console.log(
-          `    [${idx}] text:`,
-          choice.text,
-          "Text:",
-          choice.Text,
-          "(type:",
-          typeof (choice.text || choice.Text),
-          ")"
-        );
-      });
-
       // Normalize choices to ensure lowercase 'value' and 'text' properties
       element.choices = choices.map((choice: any) => ({
         value: choice.value !== undefined ? choice.value : choice.Value,
         text: choice.text !== undefined ? choice.text : choice.Text,
       }));
 
-      console.log("  Normalized choices:", element.choices);
       // Update the local choices variable to use normalized version
       choices = element.choices;
     }
@@ -137,58 +223,7 @@ export default function ScratchPage() {
         ? element.currentValue
         : element.defaultValue;
 
-    console.log("  valueToUse:", valueToUse);
-
-    // Debug: Add currentValue and matched option to title
-    if (valueToUse !== undefined && valueToUse !== null) {
-      let debugText = `${element.title || element.name}`;
-
-      if (element.currentValue !== undefined && element.currentValue !== null) {
-        debugText += ` (CV: ${element.currentValue}`;
-      } else if (
-        element.defaultValue !== undefined &&
-        element.defaultValue !== null
-      ) {
-        debugText += ` (DV: ${element.defaultValue}`;
-      }
-
-      if (choices && Array.isArray(choices)) {
-        console.log("  Looking for match in", choices.length, "choices");
-
-        const matchedChoice = choices.find((choice: any) => {
-          // Convert both to strings for comparison to handle type mismatches
-          const choiceValueStr = String(choice.value);
-          const valueToUseStr = String(valueToUse);
-          const matches = choiceValueStr === valueToUseStr;
-          console.log(
-            "    Checking choice.value:",
-            choice.value,
-            "(",
-            typeof choice.value,
-            ") == valueToUse:",
-            valueToUse,
-            "(",
-            typeof valueToUse,
-            "):",
-            matches
-          );
-          return matches;
-        });
-
-        if (matchedChoice) {
-          debugText += ` => "${matchedChoice.text}"`;
-          console.log("  ✓ MATCHED:", matchedChoice);
-        } else {
-          debugText += " => NO MATCH";
-          console.log("  ⚠️ NO MATCH FOUND");
-        }
-      }
-      debugText += ")";
-      element.title = debugText;
-    }
-
-    // Initialize survey data from currentValue or defaultValue
-    // This sets the initial selected value in the survey
+    // Set initial value based on currentValue or defaultValue
     if (valueToUse !== undefined && valueToUse !== null) {
       if (choices && Array.isArray(choices)) {
         const matchedChoice = choices.find((choice: any) => {
@@ -199,23 +234,13 @@ export default function ScratchPage() {
         if (matchedChoice) {
           // Store the matched choice value (use the actual choice.value, not the string)
           surveyData[element.name] = matchedChoice.value;
-          console.log(
-            "✓ Set initial value for",
-            element.name,
-            "to",
-            matchedChoice.value,
-            "(type:",
-            typeof matchedChoice.value,
-            "), text:",
-            matchedChoice.text
-          );
+          
+          // Set defaultValue if isBlind is not true
+          // Use the matched choice value to ensure type consistency
+          if (element.isBlind !== true) {
+            element.defaultValue = matchedChoice.value;
+          }
         } else {
-          console.warn(
-            "⚠️ NO MATCHING CHOICE for",
-            element.name,
-            "valueToUse:",
-            valueToUse
-          );
           // Try to convert to number if it looks like a number
           const numValue = Number(valueToUse);
           surveyData[element.name] = !isNaN(numValue) ? numValue : valueToUse;
@@ -223,12 +248,12 @@ export default function ScratchPage() {
       } else {
         // No choices, just use the value directly
         surveyData[element.name] = valueToUse;
-        console.log(
-          "Set initial value (no choices) for",
-          element.name,
-          "to",
-          valueToUse
-        );
+        
+        // Set defaultValue if isBlind is not true (for text fields, etc.)
+        // Skip for image types as they handle values differently
+        if (element.isBlind !== true && element.type !== "image") {
+          element.defaultValue = valueToUse;
+        }
       }
     }
 
@@ -245,10 +270,16 @@ export default function ScratchPage() {
       } else {
         // Editable: convert to file type with camera capture
         element.type = "file";
-        element.sourceType = "file-camera"; // Allow both camera and file selection
+        // Show both camera and file options
+        element.sourceType = "file-camera";
         element.acceptedTypes = "image/*";
         element.storeDataAsText = true;
         element.allowImagesPreview = true;
+        element.maxSize = 10485760; // 10MB max file size
+        element.needConfirmRemoveFile = false;
+        element.waitForUpload = true;
+        element.allowMultiple = false;
+        
         element.photoPlaceholder = "Tap to capture photo";
         element.filePlaceholder = "Choose file or take photo";
         element.imageWidth = "600px";
@@ -269,13 +300,9 @@ export default function ScratchPage() {
               type: "image/jpeg",
               content: formattedImage
             }];
-            
-            console.log("Set existing image for", element.name, "- length:", formattedImage.length);
-          } else {
-            console.log("Image data too short for", element.name, "- treating as empty");
           }
         } else {
-          console.log("No existing image for", element.name, "- showing upload buttons");
+          // No existing image - showing upload buttons
         }
         
         delete element.imageLink;
@@ -290,15 +317,79 @@ export default function ScratchPage() {
     delete element.pageSplit;
     delete element.pageSplitIdentifier;
 
-    // Final verification log
-    console.log("Final element state for", element.name, ":");
-    console.log("  type:", element.type);
-    console.log("  choices:", element.choices);
-    console.log("  currentValue:", element.currentValue);
-    console.log("  defaultValue:", element.defaultValue);
-    console.log("  surveyData[", element.name, "]:", surveyData[element.name]);
-
     return element;
+  };
+
+  const handleSaveSurvey = async () => {
+    if (!surveyJson || !templateId || !assetId) {
+      setError("No survey to save");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Get current data from the survey model (includes user changes and images)
+      const currentData = surveyModelRef.current?.data || surveyJson.data || {};
+
+      // Combine survey structure with current data
+      const surveyToSave = {
+        ...(surveyJson as any).survey,
+        data: currentData
+      };
+
+      const jsonString = JSON.stringify(surveyToSave);
+
+      // Chunk size: 50KB to be safe (well under 64KB limit)
+      const CHUNK_SIZE = 50000;
+      const totalChunks = Math.ceil(jsonString.length / CHUNK_SIZE);
+
+      let surveyInstanceIdResult: number | null = null;
+
+      // Send chunks
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, jsonString.length);
+        const chunk = jsonString.substring(start, end);
+        
+        const response = await fetch("/api/survey-instance", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            surveyTemplateHeaderId: templateId,
+            entityReference: `Asset_${assetId}`,
+            surveyInstanceId: surveyInstanceIdResult, // null for first chunk
+            chunk: chunk,
+            chunkIndex: i,
+            totalChunks: totalChunks,
+            isLastChunk: i === totalChunks - 1
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Failed to save chunk ${i + 1}`);
+        }
+
+        const result = await response.json();
+        
+        // Store the ID from first chunk
+        if (i === 0 && result.surveyInstanceId) {
+          surveyInstanceIdResult = result.surveyInstanceId;
+        }
+      }
+
+      if (surveyInstanceIdResult) {
+        setSurveyInstanceId(surveyInstanceIdResult);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save survey");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -311,6 +402,7 @@ export default function ScratchPage() {
       setLoading(true);
       setError(null);
       setSurveyJson(null);
+      setSurveyInstanceId(null);
 
       const response = await fetch("/api/generate-survey", {
         method: "POST",
@@ -323,7 +415,6 @@ export default function ScratchPage() {
       }
 
       const data = await response.json();
-      console.log("Raw data from API:", data);
       setRawPages(data.pages);
 
       // Build survey data object to hold all current values
@@ -341,22 +432,7 @@ export default function ScratchPage() {
             InstanceID: number | null;
             AttributeID: number | null;
           }) => {
-            console.log(
-              "Processing raw page:",
-              page.ID,
-              "InstanceID:",
-              page.InstanceID,
-              "AttributeID:",
-              page.AttributeID,
-              "PageSplit:",
-              page.PageSplit,
-              "PageSplitIdentifier:",
-              page.PageSplitIdentifier,
-              "ParsedJSON:",
-              page.ParsedJSON
-            );
             if (!page.ParsedJSON) {
-              console.error("Page missing ParsedJSON property:", page);
               return null;
             }
 
@@ -369,26 +445,6 @@ export default function ScratchPage() {
             const attributeId = page.AttributeID ?? pageData.attributeId;
             const pageSplit = page.PageSplit;
             const pageSplitIdentifier = page.PageSplitIdentifier;
-
-            console.log(
-              "Page ID:",
-              page.ID,
-              "- instance:",
-              instanceId,
-              "pageSplit:",
-              pageSplit,
-              "pageSplitIdentifier:",
-              pageSplitIdentifier
-            );
-            console.log("Page elements count:", pageData.elements?.length);
-
-            // Log first element to see structure
-            if (pageData.elements && pageData.elements.length > 0) {
-              console.log(
-                "First element in page:",
-                JSON.stringify(pageData.elements[0], null, 2)
-              );
-            }
 
             return {
               rawPageId: page.ID,
@@ -412,37 +468,16 @@ export default function ScratchPage() {
           identifier = null;
         }
 
-        console.log(
-          "Grouping page ID:",
-          p.rawPageId,
-          "with identifier:",
-          identifier
-        );
-
         if (!pageGroups.has(identifier)) {
           pageGroups.set(identifier, []);
         }
         pageGroups.get(identifier)!.push(p);
       });
 
-      console.log("Page groups:", pageGroups);
-      pageGroups.forEach((group, identifier) => {
-        console.log(
-          `Group "${identifier}": ${group.length} pages`,
-          group.map((p: any) => `ID:${p.rawPageId} instance:${p.instanceId}`)
-        );
-      });
-
       // Build Survey.js pages structure
       const surveyPages: any[] = [];
 
       pageGroups.forEach((group, identifier) => {
-        console.log(
-          "Processing group with identifier:",
-          identifier,
-          "- pages:",
-          group.length
-        );
 
         if (identifier) {
           // Has identifier - create one page with the identifier as the page name/title
@@ -530,9 +565,6 @@ export default function ScratchPage() {
         }
       });
 
-      console.log("Final survey pages:", surveyPages);
-      console.log("Survey data:", surveyData);
-
       const fullSurvey = {
         pages: surveyPages,
       };
@@ -548,6 +580,149 @@ export default function ScratchPage() {
   return (
     <div className="p-8">
       <style jsx global>{`
+        /* Constrain images within question content - very aggressive */
+        .sd-element__content.sd-question__content img,
+        .sd-file__decorator img,
+        .sd-file__preview img,
+        .sd-question__content img,
+        .sd-file img,
+        .sv_q_file_preview img,
+        div[class*="sd-file"] img,
+        div[class*="preview"] img {
+          max-width: 100% !important;
+          width: 100% !important;
+          height: auto !important;
+          object-fit: contain !important;
+          display: block !important;
+        }
+        
+        .sd-file__preview-wrapper,
+        .sd-file__preview,
+        .sd-file__decorator,
+        .sv_q_file_preview,
+        div[class*="sd-file__preview"] {
+          max-width: 100% !important;
+          width: 100% !important;
+          overflow: hidden !important;
+          box-sizing: border-box !important;
+        }
+        
+        /* Force file question container to constrain content */
+        .sd-file,
+        .sd-question--file {
+          max-width: 100% !important;
+          overflow: hidden !important;
+        }
+        
+        /* Force camera button to be visible on all devices (including desktop) */
+        .sd-file__choose-btn--camera,
+        .sd-context-btn--camera,
+        .sd-file__decorator .sd-context-btn,
+        .sd-action-bar .sd-action-bar-item,
+        .sv-action-bar .sv-action-bar-item {
+          display: inline-block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          pointer-events: auto !important;
+        }
+        
+        /* Make camera button visible in the file decorator */
+        .sd-file__decorator {
+          display: flex !important;
+          flex-wrap: wrap !important;
+          gap: 10px !important;
+        }
+        
+        /* Ensure all action buttons in file questions are visible */
+        .sd-file .sd-action-bar,
+        .sd-file .sv-action-bar,
+        .sd-file__choose-file {
+          display: flex !important;
+          gap: 10px !important;
+          flex-wrap: wrap !important;
+        }
+        
+        /* Mobile responsive styles */
+        @media (max-width: 768px) {
+          body {
+            padding: 0 !important;
+          }
+          
+          .p-8 {
+            padding: 0.5rem !important;
+          }
+          
+          /* Survey container adjustments for mobile */
+          .sd-root-modern {
+            padding: 0.5rem !important;
+            width: 100% !important;
+            max-width: 100vw !important;
+            overflow-x: hidden !important;
+          }
+          
+          .sd-page {
+            padding: 0.5rem !important;
+            max-width: 100% !important;
+          }
+          
+          .sd-question {
+            padding: 0.5rem !important;
+            max-width: 100% !important;
+          }
+          
+          .sd-body {
+            padding: 0 !important;
+            max-width: 100% !important;
+          }
+          
+          /* Ensure file upload buttons are visible on mobile */
+          .sd-file__decorator,
+          .sd-file__choose-btn,
+          .sd-file__choose-btn--camera,
+          .sd-file__btn,
+          .sd-file__sign-pad,
+          .sd-context-btn,
+          .sv-action-bar-item {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            position: relative !important;
+          }
+          
+          /* Make camera button more prominent */
+          .sd-file__choose-btn--camera,
+          .sd-context-btn--camera {
+            min-width: 120px !important;
+            min-height: 44px !important;
+            font-size: 16px !important;
+            padding: 12px 20px !important;
+            margin: 10px !important;
+          }
+          
+          /* Make sure file input area is tappable */
+          .sd-file {
+            min-height: 120px !important;
+            width: 100% !important;
+          }
+          
+          .sd-file__decorator {
+            width: 100% !important;
+            min-height: 100px !important;
+          }
+          
+          /* Reverse button order - camera first, then file */
+          .sd-file__decorator,
+          .sd-file__choose-file,
+          .sd-action-bar,
+          .sv-action-bar {
+            display: flex !important;
+            flex-direction: row-reverse !important;
+            justify-content: center !important;
+            gap: 10px !important;
+          }
+        }
+        
         /* Fix Survey.js navigation buttons to stay in place */
         .sd-footer {
           display: grid !important;
@@ -585,7 +760,7 @@ export default function ScratchPage() {
       <HomeButton />
 
       <div className="mb-6">
-        <h1 className="font-bold text-3xl">Survey Generator - Scratch Tool</h1>
+        <h1 className="font-bold text-3xl">Generate New Survey</h1>
         <p className="mt-1 text-gray-600">
           Generate a survey by selecting a template and entering an asset ID
         </p>
@@ -599,6 +774,68 @@ export default function ScratchPage() {
 
       {/* Input Form */}
       <div className="bg-white shadow-md mb-6 p-6 rounded-lg">
+        {/* Address Search */}
+        <div className="mb-6">
+          <label className="block mb-2 font-medium text-gray-700 text-sm">
+            Search by Address
+          </label>
+          <div className="relative" ref={addressDropdownRef}>
+            <input
+              type="text"
+              value={addressSearch}
+              onChange={(e) => {
+                setAddressSearch(e.target.value);
+                searchAddresses(e.target.value);
+              }}
+              onFocus={() => {
+                if (addressResults.length > 0) setShowAddressDropdown(true);
+              }}
+              placeholder="Type address, postcode, or town..."
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+            {searchingAddress && (
+              <div className="absolute right-3 top-3">
+                <div className="border-gray-300 border-t-blue-600 rounded-full border-2 w-4 h-4 animate-spin"></div>
+              </div>
+            )}
+            
+            {/* Address Dropdown */}
+            {showAddressDropdown && addressResults.length > 0 && (
+              <div className="absolute z-10 bg-white shadow-lg mt-1 border border-gray-300 rounded-md w-full max-h-60 overflow-y-auto">
+                {addressResults.map((address) => (
+                  <button
+                    key={address.AddressID}
+                    onClick={() => handleAddressSelect(address)}
+                    className="block hover:bg-blue-50 p-3 border-b border-gray-200 w-full text-left last:border-b-0"
+                  >
+                    <div className="font-medium text-gray-900">
+                      {address.AddressLine1}
+                      {address.AddressLine2 && `, ${address.AddressLine2}`}
+                    </div>
+                    <div className="text-gray-600 text-sm">
+                      {address.Town}, {address.County} {address.PostCode}
+                    </div>
+                    {address.PropertyID && (
+                      <div className="mt-1 text-blue-600 text-xs">
+                        Property ID: {address.PropertyID}
+                      </div>
+                    )}
+                    {!address.PropertyID && (
+                      <div className="mt-1 text-gray-500 text-xs italic">
+                        No property linked
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {addressResults.length === 0 && addressSearch.length >= 2 && !searchingAddress && (
+            <p className="mt-1 text-gray-500 text-xs">No addresses found</p>
+          )}
+        </div>
+
+        {/* Template and Asset ID Row */}
         <div className="items-end gap-4 grid grid-cols-1 md:grid-cols-3">
           <div>
             <label className="block mb-2 font-medium text-gray-700 text-sm">
@@ -620,7 +857,7 @@ export default function ScratchPage() {
 
           <div>
             <label className="block mb-2 font-medium text-gray-700 text-sm">
-              Asset ID
+              Asset ID (Property ID)
             </label>
             <input
               type="number"
@@ -641,11 +878,45 @@ export default function ScratchPage() {
             </button>
           </div>
         </div>
+
+        {/* Save Survey Button */}
+        {surveyJson && !surveyInstanceId && (
+          <div className="mt-4">
+            <button
+              onClick={handleSaveSurvey}
+              disabled={loading}
+              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 px-6 py-3 rounded-md w-full font-semibold text-white disabled:cursor-not-allowed"
+            >
+              {loading ? "Saving..." : "Save Survey"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Survey Preview */}
       {surveyJson && (
-        <div className="gap-6 grid grid-cols-1 lg:grid-cols-2">
+        <>
+          {/* Survey Instance ID Display */}
+          {surveyInstanceId && (
+            <div className="bg-green-100 mb-4 p-4 border border-green-400 rounded text-green-700">
+              <div className="flex justify-between items-center">
+                <div>
+                  <strong>✓ Survey Saved Successfully!</strong>
+                  <div className="mt-1">Survey Instance ID: <span className="font-mono font-bold">{surveyInstanceId}</span></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Unsaved Survey Warning */}
+          {!surveyInstanceId && (
+            <div className="bg-yellow-100 mb-4 p-4 border border-yellow-400 rounded text-yellow-700">
+              <strong>⚠ Survey Not Saved</strong>
+              <div className="mt-1">Click the &quot;Save Survey&quot; button above to create a survey instance.</div>
+            </div>
+          )}
+          
+          <div className="gap-6 grid grid-cols-1 lg:grid-cols-2">
           {/* Left: Survey Renderer */}
           <div className="bg-white shadow-md p-6 rounded-lg">
             <h2 className="mb-4 font-semibold text-xl">Survey Preview</h2>
@@ -660,8 +931,12 @@ export default function ScratchPage() {
                     model.showCompletedPage = false;
                     model.applyTheme(LayeredLight);
 
-                    // Enable Table of Contents on the right
-                    model.showTOC = true;
+                    // Store model reference
+                    surveyModelRef.current = model;
+
+                    // Enable Table of Contents on the right - COMMENTED OUT
+                    model.showTOC = false;
+                    // model.showTOC = true;
                     model.tocLocation = "right";
 
                     // Enable Progress Bar at the top
@@ -674,59 +949,72 @@ export default function ScratchPage() {
                     // Set the survey data (CurrentValues)
                     if (surveyJson.data) {
                       model.data = surveyJson.data;
-                      console.log("Set survey data:", surveyJson.data);
                     }
+
+                    /* COMMENTED OUT: Custom camera capture functionality
+                    // Add custom behavior for camera buttons
+                    model.onAfterRenderQuestion.add((sender, options) => {
+                      const question = options.question;
+                      if (question.getType() === "file" && question.sourceType === "file-camera") {
+                        
+                        const interceptCameraButtons = () => {
+                          const questionElement = options.htmlElement;
+                          if (!questionElement) return;
+                          
+                          // Find all potential camera buttons
+                          const allButtons = questionElement.querySelectorAll('button, .sd-file__choose-btn, .sd-action-bar-item');
+                          
+                          allButtons.forEach((button: any, index: number) => {
+                            if (buttonText.includes('photo') || buttonText.includes('camera') || 
+                                buttonTitle.includes('camera') || 
+                                buttonClass.includes('camera')) {
+                              
+                              console.log('Found camera button, hiding and replacing:', button);
+                              
+                              if (!button.dataset.customHandler) {
+                                button.dataset.customHandler = 'true';
+                                
+                                // Hide the original button
+                                button.style.display = 'none';
+                                
+                                // Create our custom button
+                                const customButton = document.createElement('button');
+                                customButton.textContent = '📷 Take Photo';
+                                customButton.className = button.className;
+                                customButton.style.cssText = button.style.cssText;
+                                customButton.style.display = 'inline-block';
+                                
+                                customButton.onclick = (e: any) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  openCustomCamera(question.name);
+                                  return false;
+                                };
+                                
+                                // Insert custom button after the original
+                                button.parentNode?.insertBefore(customButton, button.nextSibling);
+                              }
+                            }
+                          });
+                        };
+                        
+                        // Try multiple times as the DOM may update
+                        setTimeout(interceptCameraButtons, 50);
+                        setTimeout(interceptCameraButtons, 150);
+                        setTimeout(interceptCameraButtons, 300);
+                        setTimeout(interceptCameraButtons, 500);
+                      }
+                    });
+                    */
 
                     return model;
                   })()}
                 />
               </div>
             </div>
-
-            {/* Debug Panel */}
-            <div className="mt-4">
-              <details className="bg-gray-800 rounded-lg overflow-hidden">
-                <summary className="hover:bg-gray-700 px-4 py-2 font-medium text-white text-sm cursor-pointer">
-                  Debug: Full Survey JSON
-                </summary>
-                <div className="p-4 border-gray-700 border-t">
-                  <pre className="overflow-x-auto font-mono text-green-400 text-xs">
-                    {JSON.stringify(surveyJson, null, 2)}
-                  </pre>
-                </div>
-              </details>
-            </div>
-          </div>
-
-          {/* Right: Raw Pages */}
-          <div className="bg-white shadow-md p-6 rounded-lg">
-            <h2 className="mb-4 font-semibold text-xl">
-              Raw Pages from Stored Procedure
-            </h2>
-            <div
-              className="space-y-4 overflow-y-auto"
-              style={{ maxHeight: "calc(100vh - 400px)" }}
-            >
-              {rawPages.map((page) => (
-                <div key={page.ID} className="p-4 border rounded-lg">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-semibold text-sm">Page {page.ID}</h3>
-                  </div>
-                  <details className="bg-gray-100 rounded overflow-hidden">
-                    <summary className="hover:bg-gray-200 px-3 py-2 font-medium text-sm cursor-pointer">
-                      View JSON
-                    </summary>
-                    <div className="p-3 border-t">
-                      <pre className="overflow-x-auto font-mono text-xs">
-                        {JSON.stringify(JSON.parse(page.JSONText), null, 2)}
-                      </pre>
-                    </div>
-                  </details>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
+        </>
       )}
 
       {!surveyJson && !loading && (
@@ -750,6 +1038,15 @@ export default function ScratchPage() {
           </p>
         </div>
       )}
+      
+      {/* COMMENTED OUT: Full Screen Camera Modal
+      {showCamera && (
+        <FullScreenCamera
+          onCapture={handleCameraCapture}
+          onClose={handleCameraClose}
+        />
+      )}
+      */}
     </div>
   );
 }

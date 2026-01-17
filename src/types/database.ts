@@ -1,5 +1,17 @@
 // Database model interfaces based on your schema
 
+export interface Address {
+  AddressID: number;
+  AddressLine1: string;
+  AddressLine2?: string;
+  AddressLine3?: string;
+  Town: string;
+  County: string;
+  PostCode: string;
+  UPRN?: string;
+  PropertyID?: number;
+}
+
 export interface QuestionSetHeader {
   id: number;
   name: string;

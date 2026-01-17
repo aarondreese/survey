@@ -45,7 +45,7 @@ export default function SurveyRulesPage() {
       const data = await response.json();
       setFunctions(data);
     } catch (err) {
-      console.error("Error fetching functions:", err);
+      // Error fetching functions
     }
   };
 

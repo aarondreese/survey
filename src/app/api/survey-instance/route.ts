@@ -1,0 +1,256 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getDatabase } from '@/lib/database';
+import sql from 'mssql';
+
+// Increase body size limit for this route
+export const maxDuration = 60; // Max duration in seconds
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: NextRequest) {
+  try {
+    // Read the body as text first to avoid size limits in request.json()
+    const text = await request.text();
+    console.log('Received body length:', text.length, 'characters');
+    const body = JSON.parse(text);
+    const { 
+      surveyTemplateHeaderId, 
+      entityReference, 
+      surveyJson,
+      surveyInstanceId: existingInstanceId,
+      chunk,
+      chunkIndex,
+      totalChunks,
+      isLastChunk
+    } = body;
+
+    // Handle chunked upload
+    if (chunk !== undefined) {
+      console.log(`Processing chunk ${chunkIndex + 1}/${totalChunks}`);
+      
+      const db = await getDatabase();
+      
+      if (chunkIndex === 0) {
+        // First chunk: Create the instance with placeholder
+        const dbRequest = db.request();
+        dbRequest.input('SurveyTemplateHeaderID', sql.Int, surveyTemplateHeaderId);
+        dbRequest.input('EntityReference', sql.VarChar(100), entityReference);
+        dbRequest.input('ChunkData', sql.NVarChar(sql.MAX), chunk);
+        
+        const result = await dbRequest.query(
+          `INSERT INTO SurveyInstance 
+            (SurveyTemplateHeaderID, EntityReference, SurveyJSON, InstanceCreatedDate)
+           OUTPUT INSERTED.ID
+           VALUES (@SurveyTemplateHeaderID, @EntityReference, @ChunkData, GETDATE())`
+        );
+        
+        const newInstanceId = result.recordset[0].ID;
+        console.log(`Created instance ${newInstanceId} with first chunk`);
+        
+        return NextResponse.json({
+          success: true,
+          surveyInstanceId: newInstanceId,
+          message: `Chunk ${chunkIndex + 1}/${totalChunks} saved`
+        });
+      } else {
+        // Subsequent chunks: Append to existing JSON
+        const dbRequest = db.request();
+        dbRequest.input('ID', sql.Int, existingInstanceId);
+        dbRequest.input('ChunkData', sql.NVarChar(sql.MAX), chunk);
+        
+        // Use string concatenation to append chunks
+        await dbRequest.query(
+          `UPDATE SurveyInstance 
+           SET SurveyJSON = ISNULL(CAST(SurveyJSON AS NVARCHAR(MAX)), '') + CAST(@ChunkData AS NVARCHAR(MAX))
+           WHERE ID = @ID`
+        );
+        
+        console.log(`Appended chunk ${chunkIndex + 1}/${totalChunks} to instance ${existingInstanceId}`);
+        
+        return NextResponse.json({
+          success: true,
+          surveyInstanceId: existingInstanceId,
+          message: `Chunk ${chunkIndex + 1}/${totalChunks} saved`
+        });
+      }
+    }
+
+    // Handle non-chunked upload (legacy support)
+    if (!surveyTemplateHeaderId || !entityReference) {
+      return NextResponse.json(
+        { error: 'SurveyTemplateHeaderId and EntityReference are required' },
+        { status: 400 }
+      );
+    }
+
+    // Insert new survey instance (legacy non-chunked)
+    const db = await getDatabase();
+    const dbRequest = db.request();
+    
+    const jsonString = surveyJson ? JSON.stringify(surveyJson) : null;
+    console.log('JSON string length for DB:', jsonString?.length, 'characters');
+    
+    dbRequest.input('SurveyTemplateHeaderID', sql.Int, surveyTemplateHeaderId);
+    dbRequest.input('EntityReference', sql.VarChar(100), entityReference);
+    // Use NVARCHAR(MAX) to avoid truncation
+    dbRequest.input('SurveyJSON', sql.NVarChar(sql.MAX), jsonString);
+    
+    const result = await dbRequest.query(
+      `INSERT INTO SurveyInstance 
+        (SurveyTemplateHeaderID, EntityReference, SurveyJSON, InstanceCreatedDate)
+       OUTPUT INSERTED.ID
+       VALUES (@SurveyTemplateHeaderID, @EntityReference, @SurveyJSON, GETDATE())`
+    );
+
+    const legacyInstanceId = result.recordset[0].ID;
+
+    return NextResponse.json({
+      success: true,
+      surveyInstanceId: legacyInstanceId,
+      message: 'Survey instance created successfully'
+    });
+
+  } catch (error) {
+    console.error('Error creating survey instance:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to create survey instance',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      // Get specific survey instance
+      const db = await getDatabase();
+      const dbRequest = db.request();
+      dbRequest.input('ID', parseInt(id));
+      
+      const result = await dbRequest.query(
+        `SELECT 
+          si.*,
+          sth.Name as TemplateName,
+          a.AddressLine1,
+          a.AddressLine2,
+          a.Town,
+          a.County,
+          a.PostCode
+        FROM SurveyInstance si
+        LEFT JOIN SurveyTemplateHeader sth ON si.SurveyTemplateHeaderID = sth.ID
+        LEFT JOIN HMS.Property p ON si.EntityReference LIKE '%_' + CAST(p.ID AS VARCHAR) + '%'
+        LEFT JOIN HMS.Address a ON p.AddressID = a.ID
+        WHERE si.ID = @ID`
+      );
+
+      if (result.recordset.length === 0) {
+        return NextResponse.json(
+          { error: 'Survey instance not found' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: result.recordset[0]
+      });
+    } else {
+      // Get all survey instances
+      const db = await getDatabase();
+      const result = await db.request().query(
+        `SELECT 
+          si.ID,
+          si.SurveyTemplateHeaderID,
+          si.EntityReference,
+          si.InstanceCreatedDate,
+          si.CompletedDate,
+          si.ReviewedDate,
+          si.ApprovedDate,
+          sth.Name as TemplateName,
+          a.AddressLine1,
+          a.AddressLine2,
+          a.Town,
+          a.PostCode
+        FROM SurveyInstance si
+        LEFT JOIN SurveyTemplateHeader sth ON si.SurveyTemplateHeaderID = sth.ID
+        LEFT JOIN HMS.Property p ON si.EntityReference LIKE '%_' + CAST(p.ID AS VARCHAR) + '%'
+        LEFT JOIN HMS.Address a ON p.AddressID = a.ID
+        ORDER BY si.InstanceCreatedDate DESC`
+      );
+
+      return NextResponse.json({
+        success: true,
+        data: result.recordset
+      });
+    }
+
+  } catch (error) {
+    console.error('Error fetching survey instances:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to fetch survey instances',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const text = await request.text();
+    console.log('PUT - Received body length:', text.length, 'characters');
+    const body = JSON.parse(text);
+    const { 
+      id,
+      completedJson,
+      completedDate 
+    } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Survey instance ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Update survey instance with completed data
+    const db = await getDatabase();
+    const dbRequest = db.request();
+    
+    const jsonString = completedJson ? JSON.stringify(completedJson) : null;
+    console.log('PUT - JSON string length for DB:', jsonString?.length, 'characters');
+    
+    dbRequest.input('ID', sql.Int, id);
+    // Use NVARCHAR(MAX) to avoid truncation
+    dbRequest.input('CompletedJSON', sql.NVarChar(sql.MAX), jsonString);
+    dbRequest.input('CompletedDate', sql.DateTime, completedDate || new Date());
+    
+    await dbRequest.query(
+      `UPDATE SurveyInstance 
+       SET CompletedJSON = @CompletedJSON,
+           CompletedDate = @CompletedDate
+       WHERE ID = @ID`
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: 'Survey instance updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Error updating survey instance:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to update survey instance',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
