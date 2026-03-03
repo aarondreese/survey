@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import HomeButton from "@/components/HomeButton";
 import CreateButton from "@/components/CreateButton";
 import type { SurveyRule, DatabaseFunction } from "@/types/surveyRule";
@@ -44,7 +43,7 @@ export default function SurveyRulesPage() {
       if (!response.ok) throw new Error("Failed to fetch functions");
       const data = await response.json();
       setFunctions(data);
-    } catch (err) {
+    } catch {
       // Error fetching functions
     }
   };

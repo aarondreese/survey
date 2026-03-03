@@ -1,8 +1,6 @@
 // surveyDefinition.js
 // Edit this file to change the survey definition returned by the API
 
-import { read } from "fs";
-
 const survey = {
   title: "Customer Feedback Survey",
   pages: [

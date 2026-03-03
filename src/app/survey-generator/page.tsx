@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Link from "next/link";
 import HomeButton from "@/components/HomeButton";
-import FullScreenCamera from "@/components/FullScreenCamera";
 import { Survey } from "survey-react-ui";
 import { Model } from "survey-core";
 import { LayeredLight } from "survey-core/themes";
@@ -11,22 +9,26 @@ import "survey-core/survey-core.min.css";
 import type { SurveyTemplateHeader } from "@/types/surveys";
 import type { Address } from "@/types/database";
 
+interface SurveyJsonState {
+  survey: {
+    pages: unknown[];
+  };
+  data: Record<string, unknown>;
+}
+
 export default function ScratchPage() {
   const [templates, setTemplates] = useState<SurveyTemplateHeader[]>([]);
   const [templateId, setTemplateId] = useState<number>(0);
   const [assetId, setAssetId] = useState<number>(0);
   const [loading, setLoading] = useState(false);
-  const [surveyJson, setSurveyJson] = useState<object | null>(null);
+  const [surveyJson, setSurveyJson] = useState<SurveyJsonState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rawPages, setRawPages] = useState<{ ID: number; JSONText: string }[]>([]);
   const [surveyInstanceId, setSurveyInstanceId] = useState<number | null>(null);
   const [addressSearch, setAddressSearch] = useState<string>("");
   const [addressResults, setAddressResults] = useState<Address[]>([]);
   const [showAddressDropdown, setShowAddressDropdown] = useState<boolean>(false);
   const [searchingAddress, setSearchingAddress] = useState<boolean>(false);
   const addressDropdownRef = useRef<HTMLDivElement>(null);
-  const [showCamera, setShowCamera] = useState<boolean>(false);
-  const [currentImageQuestion, setCurrentImageQuestion] = useState<string | null>(null);
   const surveyModelRef = useRef<Model | null>(null);
 
   useEffect(() => {
@@ -48,14 +50,14 @@ export default function ScratchPage() {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch("/api/surveys");
+      const response: Response = await fetch("/api/surveys");
       if (!response.ok) throw new Error("Failed to fetch templates");
       const result = await response.json();
       // Extract data from wrapped response
       const data = result.data || result;
       // Ensure data is always an array
       setTemplates(Array.isArray(data) ? data : []);
-    } catch (err) {
+    } catch {
       setTemplates([]);
     }
   };
@@ -69,13 +71,13 @@ export default function ScratchPage() {
 
     try {
       setSearchingAddress(true);
-      const response = await fetch(`/api/address-search?q=${encodeURIComponent(query)}`);
+      const response: Response = await fetch(`/api/address-search?q=${encodeURIComponent(query)}`);
       if (!response.ok) throw new Error("Failed to search addresses");
       
       const result = await response.json();
       setAddressResults(result.data || []);
       setShowAddressDropdown(true);
-    } catch (err) {
+    } catch {
       setAddressResults([]);
     } finally {
       setSearchingAddress(false);
@@ -94,82 +96,6 @@ export default function ScratchPage() {
       setAddressSearch(fullAddress);
       setShowAddressDropdown(false);
     }
-  };
-
-  // Compress image to reduce size
-  const compressImage = async (dataUrl: string, maxSizeMB: number = 4): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        
-        // Calculate max dimensions (4MB target with ~70% quality typically needs ~2000px max dimension)
-        const maxDimension = 2000;
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = (height / width) * maxDimension;
-            width = maxDimension;
-          } else {
-            width = (width / height) * maxDimension;
-            height = maxDimension;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Could not get canvas context'));
-          return;
-        }
-        
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Try different quality settings to get under target size
-        let quality = 0.7;
-        let compressed = canvas.toDataURL('image/jpeg', quality);
-        
-        // Rough estimate: base64 string length * 0.75 gives bytes
-        while (compressed.length * 0.75 > maxSizeMB * 1024 * 1024 && quality > 0.1) {
-          quality -= 0.1;
-          compressed = canvas.toDataURL('image/jpeg', quality);
-        }
-        
-        resolve(compressed);
-      };
-      
-      img.onerror = () => reject(new Error('Failed to load image'));
-      img.src = dataUrl;
-    });
-  };
-
-  const handleCameraCapture = async (imageDataUrl: string) => {
-    if (currentImageQuestion && surveyModelRef.current) {
-      // Compress the image before saving
-      const compressedImage = await compressImage(imageDataUrl);
-      
-      // Set the captured image to the survey question
-      surveyModelRef.current.setValue(currentImageQuestion, [{
-        name: "camera-capture.jpg",
-        type: "image/jpeg",
-        content: compressedImage
-      }]);
-    }
-    setShowCamera(false);
-    setCurrentImageQuestion(null);
-  };
-
-  const handleCameraClose = () => {
-    setShowCamera(false);
-    setCurrentImageQuestion(null);
-  };
-
-  const openCustomCamera = (questionName: string) => {
-    setCurrentImageQuestion(questionName);
-    setShowCamera(true);
   };
 
   // Helper function to process individual elements
@@ -200,7 +126,7 @@ export default function ScratchPage() {
       try {
         choices = JSON.parse(choices);
         element.choices = choices; // Update the element with parsed choices
-      } catch (e) {
+      } catch {
         choices = null;
       }
     }
@@ -335,7 +261,7 @@ export default function ScratchPage() {
 
       // Combine survey structure with current data
       const surveyToSave = {
-        ...(surveyJson as any).survey,
+        ...surveyJson.survey,
         data: currentData
       };
 
@@ -353,7 +279,7 @@ export default function ScratchPage() {
         const end = Math.min(start + CHUNK_SIZE, jsonString.length);
         const chunk = jsonString.substring(start, end);
         
-        const response = await fetch("/api/survey-instance", {
+        const response: Response = await fetch("/api/survey-instance", {
           method: "POST",
           headers: { 
             "Content-Type": "application/json"
@@ -404,7 +330,7 @@ export default function ScratchPage() {
       setSurveyJson(null);
       setSurveyInstanceId(null);
 
-      const response = await fetch("/api/generate-survey", {
+      const response: Response = await fetch("/api/generate-survey", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ templateId, assetId }),
@@ -415,7 +341,6 @@ export default function ScratchPage() {
       }
 
       const data = await response.json();
-      setRawPages(data.pages);
 
       // Build survey data object to hold all current values
       const surveyData: Record<string, any> = {};
@@ -488,7 +413,7 @@ export default function ScratchPage() {
             elements: [],
           };
 
-          group.forEach((p: any, idx: number) => {
+          group.forEach((p: any) => {
             const pageData = p.pageData;
             const instanceId = p.instanceId;
             const attributeId = p.attributeId;

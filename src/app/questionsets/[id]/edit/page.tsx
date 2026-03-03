@@ -224,7 +224,7 @@ export default function EditQuestionSetPage() {
       });
 
       if (response.ok) {
-        const result = await response.json();
+        await response.json();
         // Redirect back to question sets list
         router.push("/questionsets");
       } else {

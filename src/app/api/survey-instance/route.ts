@@ -19,8 +19,7 @@ export async function POST(request: NextRequest) {
       surveyInstanceId: existingInstanceId,
       chunk,
       chunkIndex,
-      totalChunks,
-      isLastChunk
+      totalChunks
     } = body;
 
     // Handle chunked upload

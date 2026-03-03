@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface FullScreenCameraProps {
@@ -18,13 +18,15 @@ export default function FullScreenCamera({ onCapture, onClose }: FullScreenCamer
 
   useEffect(() => {
     setMounted(true);
-    startCamera();
-    return () => {
-      stopCamera();
-    };
-  }, [facingMode]);
+  }, []);
 
-  const startCamera = async () => {
+  const stopCamera = useCallback(() => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+  }, [stream]);
+
+  const startCamera = useCallback(async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -39,16 +41,17 @@ export default function FullScreenCamera({ onCapture, onClose }: FullScreenCamer
         videoRef.current.srcObject = mediaStream;
       }
       setError(null);
-    } catch (err) {
+    } catch {
       setError("Failed to access camera. Please check permissions.");
     }
-  };
+  }, [facingMode]);
 
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-  };
+  useEffect(() => {
+    startCamera();
+    return () => {
+      stopCamera();
+    };
+  }, [startCamera, stopCamera]);
 
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;

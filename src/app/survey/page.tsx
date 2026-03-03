@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import HomeButton from "@/components/HomeButton";
 
 import { Survey } from "survey-react-ui";

@@ -102,7 +102,7 @@ export default function CreateSurveyPage() {
           submit: errorData.error || "Failed to create survey template",
         });
       }
-    } catch (error) {
+    } catch {
       setErrors({
         submit: "Network error. Please try again.",
       });

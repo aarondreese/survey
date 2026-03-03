@@ -11,14 +11,6 @@ export async function GET() {
       'CreatedOn', 'InsertDate', 'InsertedDate', 'Timestamp', 'CreateTime'
     ];
     
-    const possibleDescColumns = [
-      'Description', 'description', 'Desc', 'Notes', 'Comments'
-    ];
-    
-    const possibleSourceColumns = [
-      'SourceViewName', 'source_view_name', 'SourceView', 'ViewName', 'DataSource'
-    ];
-    
     // Try just basic columns first
     try {
       const basicResult = await executeQuery(`SELECT id, name FROM QuestionSetHeader`);

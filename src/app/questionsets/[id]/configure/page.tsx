@@ -1,5 +1,28 @@
 "use client";
 
+/**
+ * Configure Questions Page
+ * 
+ * This page handles configuration of question sets, mapping field types from
+ * hms.CustomFieldType to appropriate survey display types.
+ * 
+ * CustomFieldType Mappings (from hms.CustomFieldType table):
+ * - CustomDate (ID: 1) -> date
+ * - CustomDateTime (ID: 2) -> date
+ * - CustomTime (ID: 3) -> text (or time picker)
+ * - CustomInt (ID: 4) -> number
+ * - CustomDecimal (ID: 5) -> number
+ * - CustomShortText (ID: 6) -> text
+ * - CustomLongText (ID: 7) -> textarea
+ * - CustomMaxText (ID: 8) -> textarea
+ * - CustomBoolean (ID: 9) -> boolean (switch/toggle)
+ * - CustomImageLink (ID: 10) -> image
+ * 
+ * Note: Checkbox is used for multiple-choice fields with options lists
+ * 
+ * Field naming convention: FieldType + digits (e.g., String01, Date02, Int03)
+ */
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -33,6 +56,9 @@ interface QuestionConfig {
   isBlind: boolean;
   minIsCurrent: boolean;
   sortOrder: number;
+  // Boolean-specific labels
+  trueLabel?: string;
+  falseLabel?: string;
   // UI state
   isEnabled: boolean;
   isNewlyAdded?: boolean; // Flag for fields that exist in source but not in saved questions
@@ -70,6 +96,13 @@ interface SurveyElement {
   photoPlaceholder?: string;
   fileOrPhotoPlaceholder?: string;
   storeDataAsText?: boolean;
+  // Boolean question properties
+  renderAs?: string;
+  labelTrue?: string;
+  labelFalse?: string;
+  valueTrue?: boolean;
+  valueFalse?: boolean;
+  defaultValue?: boolean | string | number;
 }
 
 const REQUIRED_IMAGE_PLACEHOLDER =
@@ -101,6 +134,53 @@ export default function ConfigureQuestionsPage() {
   const tableRef = useRef<HTMLTableElement>(null);
   const headerRef = useRef<HTMLTableSectionElement>(null);
 
+  // Map CustomFieldType definitions to display types based on hms.CustomFieldType
+  const getDisplayTypeFromFieldName = useCallback((fieldName: string, hasOptions: boolean, fieldNameStartsWithImage: boolean): string => {
+    // Extract the field type prefix (e.g., "CustomDate", "CustomInt", etc.)
+    const fieldNameBase = fieldName.replace(/\d+$/, "").toLowerCase();
+    
+    // Image fields (CustomImageLink)
+    if (fieldNameStartsWithImage || fieldNameBase.includes("image")) {
+      return "image";
+    }
+    
+    // Lookup fields with options
+    if (hasOptions || fieldNameBase.includes("lookup")) {
+      return "dropdown";
+    }
+    
+    // Date fields (CustomDate, CustomDateTime, CustomTime)
+    if (fieldNameBase.includes("date") || fieldNameBase === "date") {
+      return "date";
+    }
+    
+    // Time fields (CustomTime)
+    if (fieldNameBase.includes("time")) {
+      return "text"; // or could be a special time picker
+    }
+    
+    // Numeric fields (CustomInt, CustomDecimal)
+    if (fieldNameBase.includes("int") || fieldNameBase.includes("number") || 
+        fieldNameBase.includes("decimal") || fieldNameBase.includes("num")) {
+      return "number";
+    }
+    
+    // Boolean fields (CustomBoolean) - use boolean/switch type
+    if (fieldNameBase.includes("bool") || fieldNameBase.includes("flag")) {
+      return "boolean";
+    }
+    
+    // Long text fields (CustomLongText, CustomMaxText)
+    if (fieldNameBase.includes("longtext") || fieldNameBase.includes("maxtext") ||
+        fieldNameBase.includes("comment") || fieldNameBase.includes("note") ||
+        fieldNameBase.includes("description")) {
+      return "textarea";
+    }
+    
+    // Short text fields (CustomShortText) or default
+    return "text";
+  }, []);
+
   const createConfigFromSourceRecord = useCallback(
     (record: Record<string, unknown>, index: number): QuestionConfig => {
       // Use the 'label' column for attribute label (normalized to camelCase by API)
@@ -108,40 +188,15 @@ export default function ConfigureQuestionsPage() {
       const fieldName = String(record.fieldName || attributeLabel);
 
       const options = String(record.options || "");
-      const hasOptions = options && options.trim() !== "";
-
-      // Infer display type from field name (remove digits from end)
-      const fieldNameBase = fieldName.replace(/\d+$/, "").toLowerCase();
+      const hasOptions = options.trim() !== "";
       const fieldNameStartsWithImage = fieldName.trim().toLowerCase().startsWith("image");
 
-      let defaultDisplayType = "text";
-      if (fieldNameStartsWithImage) {
-        defaultDisplayType = "image";
-      } else if (hasOptions) {
-        defaultDisplayType = "dropdown"; // Default to dropdown for lookup fields
-      } else if (fieldNameBase.includes("date") || fieldNameBase === "date") {
-        defaultDisplayType = "date";
-      } else if (
-        fieldNameBase.includes("text") ||
-        fieldNameBase.includes("comment") ||
-        fieldNameBase.includes("note")
-      ) {
-        defaultDisplayType = "textarea";
-      } else if (
-        fieldNameBase.includes("number") ||
-        fieldNameBase.includes("num") ||
-        fieldNameBase.includes("count")
-      ) {
-        defaultDisplayType = "number";
-      } else if (
-        fieldNameBase.includes("check") ||
-        fieldNameBase.includes("bool") ||
-        fieldNameBase.includes("flag")
-      ) {
-        defaultDisplayType = "checkbox";
-      } else {
-        defaultDisplayType = "text"; // Default fallback
-      }
+      // Infer display type based on CustomFieldType definitions
+      const defaultDisplayType = getDisplayTypeFromFieldName(fieldName, hasOptions, fieldNameStartsWithImage);
+
+      // Default boolean labels
+      const trueLabel = "Yes";
+      const falseLabel = "No";
 
       return {
         fieldName: fieldName,
@@ -158,9 +213,11 @@ export default function ConfigureQuestionsPage() {
         minIsCurrent: false,
         sortOrder: index + 1,
         isEnabled: true,
+        trueLabel: defaultDisplayType === "boolean" ? trueLabel : undefined,
+        falseLabel: defaultDisplayType === "boolean" ? falseLabel : undefined,
       };
     },
-    []
+    [getDisplayTypeFromFieldName]
   );
 
   const mergeQuestionsWithSourceData = useCallback(
@@ -216,10 +273,27 @@ export default function ConfigureQuestionsPage() {
           finalOptions: currentOptions,
         });
 
+        // Parse boolean labels from surveyLabel if displayType is boolean
+        // Format: "Question Text|TrueLabel:Yes|FalseLabel:No"
+        let trueLabel = "Yes";
+        let falseLabel = "No";
+        let displayLabel = question.surveyLabel;
+        
+        if (question.displayType === "boolean" && question.surveyLabel) {
+          const parts = question.surveyLabel.split("|");
+          if (parts.length >= 3) {
+            displayLabel = parts[0];
+            const trueLabelMatch = parts.find(p => p.startsWith("TrueLabel:"));
+            const falseLabelMatch = parts.find(p => p.startsWith("FalseLabel:"));
+            if (trueLabelMatch) trueLabel = trueLabelMatch.substring(10);
+            if (falseLabelMatch) falseLabel = falseLabelMatch.substring(11);
+          }
+        }
+
         configs.push({
           fieldName: question.fieldName,
           attributeLabel: question.attributeLabel,
-          surveyLabel: question.surveyLabel,
+          surveyLabel: displayLabel,
           displayType: question.displayType,
           options: currentOptions,
           description: question.description || "",
@@ -236,6 +310,8 @@ export default function ConfigureQuestionsPage() {
           isEnabled: !isOrphaned, // Orphaned questions are disabled by default
           isNewlyAdded: false,
           isOrphaned: isOrphaned,
+          trueLabel: question.displayType === "boolean" ? trueLabel : undefined,
+          falseLabel: question.displayType === "boolean" ? falseLabel : undefined,
         });
       });
 
@@ -358,38 +434,50 @@ export default function ConfigureQuestionsPage() {
     }
   };
 
-  // Define all possible display type options
+  // Define all possible display type options based on hms.CustomFieldType
   const allDisplayTypeOptions = [
-    { value: "text", label: "Text" },
-    { value: "textarea", label: "Textarea" },
-    { value: "number", label: "Number" },
-    { value: "date", label: "Date" },
-    { value: "dropdown", label: "Dropdown" },
-    { value: "radio", label: "Radio Buttons" },
-    { value: "checkbox", label: "Checkbox" },
-    { value: "image", label: "Image" },
+    { value: "text", label: "Short Text", fieldTypes: ["CustomShortText", "string", "text", "shorttext"] },
+    { value: "textarea", label: "Long Text", fieldTypes: ["CustomLongText", "CustomMaxText", "longtext", "comment", "string"] },
+    { value: "number", label: "Number", fieldTypes: ["CustomInt", "CustomDecimal", "int", "decimal", "number"] },
+    { value: "date", label: "Date", fieldTypes: ["CustomDate", "CustomDateTime", "date"] },
+    { value: "dropdown", label: "Dropdown", fieldTypes: ["lookup", "select"] },
+    { value: "radio", label: "Radio Buttons", fieldTypes: ["lookup", "select"] },
+    { value: "checkbox", label: "Checkboxes (Multiple Choice)", fieldTypes: ["lookup", "select"] },
+    { value: "boolean", label: "Boolean (Yes/No Switch)", fieldTypes: ["CustomBoolean", "bool"] },
+    { value: "image", label: "Image", fieldTypes: ["CustomImageLink", "image"] },
   ];
 
-  // Get available display type options based on field characteristics
+  // Get available display type options based on field characteristics and CustomFieldType
   const getDisplayTypeOptions = (config: QuestionConfig) => {
     // Parse field name (remove digits from end) to determine field type
     const fieldNameBase = config.fieldName.replace(/\d+$/, "").toLowerCase();
-    const isDateField =
-      fieldNameBase.includes("date") || fieldNameBase === "date";
-    const fieldNameStartsWithImage = config.fieldName
-      .trim()
-      .toLowerCase()
-      .startsWith("image");
+    const isDateField = fieldNameBase.includes("date") || fieldNameBase === "date";
+    const isTimeField = fieldNameBase.includes("time");
+    const isIntField = fieldNameBase.includes("int") || fieldNameBase.includes("number");
+    const isDecimalField = fieldNameBase.includes("decimal");
+    const isBoolField = fieldNameBase.includes("bool") || fieldNameBase.includes("check");
+    const isLongTextField = fieldNameBase.includes("longtext") || fieldNameBase.includes("maxtext");
+    const isShortTextField = fieldNameBase.includes("shorttext") || fieldNameBase.includes("string");
+    const fieldNameStartsWithImage = config.fieldName.trim().toLowerCase().startsWith("image");
 
-    // Date fields should always be restricted to date type only
-    if (isDateField) {
+    // Date/Time fields should be restricted to date type only
+    if (isDateField || isTimeField) {
       return allDisplayTypeOptions.filter((option) => option.value === "date");
     }
 
-    // Check if this field has choices available
+    // Numeric fields (int/decimal)
+    if (isIntField || isDecimalField) {
+      return allDisplayTypeOptions.filter((option) => option.value === "number");
+    }
+
+    // Boolean fields (true/false switch)
+    if (isBoolField) {
+      return allDisplayTypeOptions.filter((option) => option.value === "boolean");
+    }
+
+    // Check if this field has choices available (lookup fields)
     const hasOptions = config.options && config.options.trim() !== "";
-    const hasChoicesFromView =
-      getFieldOptionsFromView(config.fieldName).length > 0;
+    const hasChoicesFromView = getFieldOptionsFromView(config.fieldName).length > 0;
 
     // If field has choices (either from config options or source view), restrict to choice-based types
     let filteredOptions;
@@ -398,16 +486,29 @@ export default function ConfigureQuestionsPage() {
         (option) =>
           option.value === "dropdown" ||
           option.value === "radio" ||
-          option.value === "checkbox"
+          option.value === "checkbox"  // Checkbox for multiple selection from options
       );
     } else {
-      // Other fields without choices: exclude dropdown, radio, and checkbox (since they need options)
-      filteredOptions = allDisplayTypeOptions.filter(
-        (option) =>
-          option.value !== "dropdown" &&
-          option.value !== "radio" &&
-          option.value !== "checkbox"
-      );
+      // Text fields without choices - allow both short and long text for string fields
+      if (isLongTextField) {
+        // For explicitly long text fields, allow both options but prefer textarea
+        filteredOptions = allDisplayTypeOptions.filter(
+          (option) => option.value === "text" || option.value === "textarea"
+        );
+      } else if (isShortTextField) {
+        // For string fields, allow both short text and long text options
+        filteredOptions = allDisplayTypeOptions.filter(
+          (option) => option.value === "text" || option.value === "textarea"
+        );
+      } else {
+        // Other fields without choices: exclude dropdown, radio, and checkbox (since they need options)
+        filteredOptions = allDisplayTypeOptions.filter(
+          (option) =>
+            option.value !== "dropdown" &&
+            option.value !== "radio" &&
+            option.value !== "checkbox"
+        );
+      }
     }
 
     if (!fieldNameStartsWithImage) {
@@ -733,6 +834,19 @@ export default function ConfigureQuestionsPage() {
             element.type = "text";
             element.inputType = "date";
             break;
+          case "boolean":
+            // SurveyJS boolean type with switch rendering
+            element.type = "boolean";
+            element.renderAs = "switch";
+            // Set the labels that appear next to the switch
+            element.labelTrue = config.trueLabel || "Yes";
+            element.labelFalse = config.falseLabel || "No";
+            // Set the actual values stored
+            element.valueTrue = true;
+            element.valueFalse = false;
+            // Default to true for preview to show toggle in "on" state
+            element.defaultValue = true;
+            break;
           case "dropdown":
           case "radio":
           case "checkbox":
@@ -948,25 +1062,35 @@ export default function ConfigureQuestionsPage() {
       );
 
       // Create questions for this question set
-      const questionsData = enabledQuestions.map((config) => ({
-        questionSetHeaderId: parseInt(questionSetId),
-        fieldName: config.fieldName,
-        attributeLabel: config.attributeLabel,
-        surveyLabel: config.surveyLabel,
-        displayType: config.displayType,
-        choices: null, // Options come from data, not user configuration
-        description: config.description || null,
-        placeholder: config.placeholder || null,
-        minValue: config.minValue || null,
-        maxValue: config.maxValue || null,
-        colCount: config.colCount || null,
-        isReadOnly: config.isReadOnly,
-        isVisible: config.isVisible,
-        isRequired: config.isRequired,
-        isBlind: config.isBlind,
-        minIsCurrent: config.minIsCurrent,
-        sortOrder: config.sortOrder,
-      }));
+      const questionsData = enabledQuestions.map((config) => {
+        // For boolean questions, encode the true/false labels into surveyLabel
+        let surveyLabelToSave = config.surveyLabel;
+        if (config.displayType === "boolean" && (config.trueLabel || config.falseLabel)) {
+          const trueLabel = config.trueLabel || "Yes";
+          const falseLabel = config.falseLabel || "No";
+          surveyLabelToSave = `${config.surveyLabel}|TrueLabel:${trueLabel}|FalseLabel:${falseLabel}`;
+        }
+
+        return {
+          questionSetHeaderId: parseInt(questionSetId),
+          fieldName: config.fieldName,
+          attributeLabel: config.attributeLabel,
+          surveyLabel: surveyLabelToSave,
+          displayType: config.displayType,
+          choices: null, // Options come from data, not user configuration
+          description: config.description || null,
+          placeholder: config.placeholder || null,
+          minValue: config.minValue || null,
+          maxValue: config.maxValue || null,
+          colCount: config.colCount || null,
+          isReadOnly: config.isReadOnly,
+          isVisible: config.isVisible,
+          isRequired: config.isRequired,
+          isBlind: config.isBlind,
+          minIsCurrent: config.minIsCurrent,
+          sortOrder: config.sortOrder,
+        };
+      });
 
       const response = await fetch("/api/questionset-questions", {
         method: "POST",
@@ -1285,21 +1409,58 @@ export default function ConfigureQuestionsPage() {
 
                     {/* Placeholder */}
                     <div className="flex-1 min-w-0">
-                      <input
-                        type="text"
-                        value={config.placeholder || ""}
-                        onChange={(e) =>
-                          updateQuestionConfig(
-                            index,
-                            "placeholder",
-                            e.target.value
-                          )
-                        }
-                        disabled={!config.isEnabled}
-                        className={`w-full px-2 py-1 text-sm border border-gray-300 rounded ${
-                          !config.isEnabled ? "bg-gray-100 text-gray-500" : ""
-                        }`}
-                      />
+                      {config.displayType === "boolean" ? (
+                        <div className="flex gap-1">
+                          <input
+                            type="text"
+                            value={config.trueLabel || "Yes"}
+                            onChange={(e) =>
+                              updateQuestionConfig(
+                                index,
+                                "trueLabel",
+                                e.target.value
+                              )
+                            }
+                            disabled={!config.isEnabled}
+                            placeholder="True label"
+                            className={`w-1/2 px-2 py-1 text-sm border border-gray-300 rounded ${
+                              !config.isEnabled ? "bg-gray-100 text-gray-500" : ""
+                            }`}
+                          />
+                          <input
+                            type="text"
+                            value={config.falseLabel || "No"}
+                            onChange={(e) =>
+                              updateQuestionConfig(
+                                index,
+                                "falseLabel",
+                                e.target.value
+                              )
+                            }
+                            disabled={!config.isEnabled}
+                            placeholder="False label"
+                            className={`w-1/2 px-2 py-1 text-sm border border-gray-300 rounded ${
+                              !config.isEnabled ? "bg-gray-100 text-gray-500" : ""
+                            }`}
+                          />
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          value={config.placeholder || ""}
+                          onChange={(e) =>
+                            updateQuestionConfig(
+                              index,
+                              "placeholder",
+                              e.target.value
+                            )
+                          }
+                          disabled={!config.isEnabled}
+                          className={`w-full px-2 py-1 text-sm border border-gray-300 rounded ${
+                            !config.isEnabled ? "bg-gray-100 text-gray-500" : ""
+                          }`}
+                        />
+                      )}
                     </div>
 
                     {/* Options */}

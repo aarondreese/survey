@@ -5,8 +5,30 @@ This is a [Next.js](https://nextjs.org) project with SurveyJS integration and MS
 - **Survey Management**: Create and manage survey question sets
 - **SurveyJS Integration**: Advanced survey rendering with custom properties
 - **Database Integration**: MSSQL database connectivity for persistent data storage
+- **Custom Field Types**: Support for HMS custom field types with automatic display type mapping
 - **TypeScript**: Full TypeScript support for type safety
 - **Modern UI**: Clean, responsive interface built with Tailwind CSS
+
+## Custom Field Type Support
+
+The application automatically maps HMS custom field types to appropriate survey display types:
+
+| Field Type | ID | Display Type | Description |
+|------------|-----|--------------|-------------|
+| CustomDate | 1 | date | Date only picker |
+| CustomDateTime | 2 | date | Date and time picker |
+| CustomTime | 3 | text | Time input field |
+| CustomInt | 4 | number | Whole number input |
+| CustomDecimal | 5 | number | Decimal number input |
+| CustomShortText | 6 | text | Short text input (< 100 chars) |
+| CustomLongText | 7 | textarea | Long text input (up to 1000 chars) |
+| CustomMaxText | 8 | textarea | Very long text input |
+| CustomBoolean | 9 | checkbox | True/False checkbox |
+| CustomImageLink | 10 | image | Image upload/camera capture |
+
+Field naming convention: `FieldType` + digits (e.g., `String01`, `Date02`, `Int03`, `Lookup01`)
+
+When configuring question sets, the application automatically detects the field type from the field name and restricts the available display types accordingly.
 
 ## Database Setup
 

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import TitleManager from "@/components/TitleManager";
@@ -19,13 +19,15 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
   },
-  themeColor: "#ea580c",
   other: {
-    "theme-color": "#ea580c",
     "msapplication-TileColor": "#ea580c",
     "msapplication-navbutton-color": "#ea580c",
     "apple-mobile-web-app-status-bar-style": "black-translucent",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ea580c",
 };
 
 export default function RootLayout({

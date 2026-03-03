@@ -163,7 +163,7 @@ export default function Home() {
             </div>
           </Link>
 
-          <Link href="/scratch" className="group">
+          <Link href="/survey-generator" className="group">
             <div className="bg-white shadow-md hover:shadow-lg p-6 border border-gray-200 group-hover:border-indigo-300 rounded-lg transition-shadow">
               <div className="flex items-center mb-4">
                 <div className="flex justify-center items-center bg-indigo-100 mr-4 rounded-lg w-12 h-12">
