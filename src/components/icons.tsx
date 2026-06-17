@@ -299,3 +299,128 @@ export function DotsHorizontalIcon({ className = "w-3 h-3" }: IconProps) {
     </svg>
   );
 }
+
+export function TextTypeIcon({ className = "w-3.5 h-3.5" }: IconProps) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M6 6h12M12 6v12M8 18h8"
+      />
+    </svg>
+  );
+}
+
+export function NumberTypeIcon({ className = "w-3.5 h-3.5" }: IconProps) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 4L6 20M18 4l-2 16M4 9h18M3 15h18"
+      />
+    </svg>
+  );
+}
+
+export function DateTypeIcon({ className = "w-3.5 h-3.5" }: IconProps) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 2v4M16 2v4M3 10h18M5 6h14a2 2 0 012 2v11a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z"
+      />
+    </svg>
+  );
+}
+
+export function ChoiceTypeIcon({ className = "w-3.5 h-3.5" }: IconProps) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 7h4m4 0h8M4 12h4m4 0h8M4 17h4m4 0h8"
+      />
+      <circle cx="6" cy="7" r="1.25" fill="currentColor" />
+      <circle cx="6" cy="12" r="1.25" fill="currentColor" />
+      <circle cx="6" cy="17" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function BooleanTypeIcon({ className = "w-3.5 h-3.5" }: IconProps) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <rect
+        x="3"
+        y="7"
+        width="18"
+        height="10"
+        rx="5"
+        stroke="currentColor"
+        strokeWidth={2}
+      />
+      <circle cx="9" cy="12" r="3" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function ImageTypeIcon({ className = "w-3.5 h-3.5" }: IconProps) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="14"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth={2}
+      />
+      <circle cx="9" cy="10" r="1.5" fill="currentColor" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M5 17l5-4 4 3 3-2 2 3"
+      />
+    </svg>
+  );
+}

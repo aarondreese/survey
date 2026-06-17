@@ -115,8 +115,8 @@ export default function SurveysPage() {
                     isSelected={selectedSurvey?.id === survey.id}
                     onClick={() => handleSurveySelect(survey)}
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1 min-w-0">
+                    <div className="gap-2 lg:gap-4 grid grid-cols-1 lg:grid-cols-[1fr_auto] lg:items-start">
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <h3 className="font-medium text-gray-900 truncate">
                             {survey.name}
@@ -142,11 +142,13 @@ export default function SurveysPage() {
                           <span>Pages: {survey.pageSplit}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 ml-4">
+
+                      <div className="flex lg:flex-col gap-2 mt-2 lg:mt-0 pt-2 lg:pt-0 border-gray-100 lg:border-0 border-t">
                         <ActionButton
                           href={`/surveys/${survey.id}/edit`}
                           variant="blue"
                           icon={<EditIcon />}
+                          className="justify-center w-28"
                         >
                           Edit
                         </ActionButton>
@@ -154,6 +156,7 @@ export default function SurveysPage() {
                           href={`/surveys/${survey.id}/configure`}
                           variant="green"
                           icon={<SettingsIcon />}
+                          className="justify-center w-28"
                         >
                           Configure
                         </ActionButton>

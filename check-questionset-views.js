@@ -42,7 +42,7 @@ async function checkQuestionSetViews() {
         console.log(`\n=== Sample data from ${viewName} ===\n`);
         const sampleData = await sql.query`SELECT TOP 1 * FROM ${sql.Table(viewName)}`;
         console.log(JSON.stringify(sampleData.recordset, null, 2));
-      } catch (err) {
+      } catch {
         console.log('Could not query view directly, might need schema prefix');
       }
     }

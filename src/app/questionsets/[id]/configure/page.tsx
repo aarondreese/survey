@@ -127,12 +127,16 @@ export default function ConfigureQuestionsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [isHeaderSticky, setIsHeaderSticky] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [showDebug, setShowDebug] = useState(false);
+  const [showFloatingHeader, setShowFloatingHeader] = useState(false);
+  const [floatingHeaderLeft, setFloatingHeaderLeft] = useState(0);
+  const [floatingHeaderWidth, setFloatingHeaderWidth] = useState(0);
+  const [tableScrollLeft, setTableScrollLeft] = useState(0);
 
-  const tableRef = useRef<HTMLTableElement>(null);
-  const headerRef = useRef<HTMLTableSectionElement>(null);
+  const tableScrollContainerRef = useRef<HTMLDivElement>(null);
+  const tableHeaderRowRef = useRef<HTMLDivElement>(null);
+  const tableDataRowsRef = useRef<HTMLDivElement>(null);
 
   // Map CustomFieldType definitions to display types based on hms.CustomFieldType
   const getDisplayTypeFromFieldName = useCallback((fieldName: string, hasOptions: boolean, fieldNameStartsWithImage: boolean): string => {
@@ -403,19 +407,45 @@ export default function ConfigureQuestionsPage() {
     fetchQuestionSetAndData();
   }, [fetchQuestionSetAndData]);
 
-  // Handle scroll detection for sticky header
   useEffect(() => {
-    const handleScroll = () => {
-      if (tableRef.current) {
-        const tableRect = tableRef.current.getBoundingClientRect();
-        const shouldBeSticky = tableRect.top <= 0 && tableRect.bottom > 0;
-        setIsHeaderSticky(shouldBeSticky);
-      }
+    const updateFloatingHeader = () => {
+      const container = document.getElementById("question-configuration-container");
+      const headerEl = tableHeaderRowRef.current;
+      const dataRowsEl = tableDataRowsRef.current;
+      if (!container || !headerEl || !dataRowsEl) return;
+
+      const rect = container.getBoundingClientRect();
+      const headerRect = headerEl.getBoundingClientRect();
+      const dataRowsRect = dataRowsEl.getBoundingClientRect();
+
+      // Show only after the in-table header scrolls off top,
+      // and hide once the last data row has scrolled off top.
+      const shouldStick = headerRect.bottom <= 0 && dataRowsRect.bottom > 0;
+
+      setShowFloatingHeader(shouldStick);
+      setFloatingHeaderLeft(rect.left);
+      setFloatingHeaderWidth(rect.width);
+      setTableScrollLeft(tableScrollContainerRef.current?.scrollLeft || 0);
     };
 
-    window.addEventListener("scroll", handleScroll);
-    handleScroll(); // Check initial state
-    return () => window.removeEventListener("scroll", handleScroll);
+    const handleTableScroll = () => {
+      setTableScrollLeft(tableScrollContainerRef.current?.scrollLeft || 0);
+    };
+
+    const scrollEl = tableScrollContainerRef.current;
+
+    updateFloatingHeader();
+    window.addEventListener("scroll", updateFloatingHeader, { passive: true });
+    window.addEventListener("resize", updateFloatingHeader);
+    scrollEl?.addEventListener("scroll", handleTableScroll, {
+      passive: true,
+    });
+
+    return () => {
+      window.removeEventListener("scroll", updateFloatingHeader);
+      window.removeEventListener("resize", updateFloatingHeader);
+      scrollEl?.removeEventListener("scroll", handleTableScroll);
+    };
   }, []);
 
   const updateQuestionConfig = (
@@ -1137,6 +1167,34 @@ export default function ConfigureQuestionsPage() {
 
   return (
     <div className="mx-auto p-6 max-w-6xl">
+      {showFloatingHeader && (
+        <div
+          className="top-0 z-50 fixed bg-white shadow-sm border-gray-200 border-x border-b overflow-hidden"
+          style={{ left: floatingHeaderLeft, width: floatingHeaderWidth }}
+        >
+          <div
+            className="flex items-center gap-4 bg-gray-50 pr-6 pl-12 py-3"
+            style={{ transform: `translateX(${-tableScrollLeft}px)` }}
+          >
+            <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
+              Field Name
+            </div>
+            <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
+              Attribute Label
+            </div>
+            <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
+              Survey Label
+            </div>
+            <div className="flex-shrink-0 w-32 font-medium text-gray-500 text-xs uppercase tracking-wider">
+              Display Type
+            </div>
+            <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
+              Placeholder
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2 text-gray-600 text-sm">
           <Link href="/questionsets" className="hover:text-blue-600">
@@ -1157,7 +1215,10 @@ export default function ConfigureQuestionsPage() {
         </p>
       </div>
 
-      <div className="bg-white shadow-sm border border-gray-200 rounded-lg">
+      <div
+        id="question-configuration-container"
+        className="bg-white shadow-sm border border-gray-200 rounded-lg"
+      >
         <div className="p-6 border-gray-200 border-b">
           <div className="flex justify-between items-center">
             <h2 className="font-semibold text-lg">Question Configuration</h2>
@@ -1201,48 +1262,16 @@ export default function ConfigureQuestionsPage() {
           </div>
         </div>
 
-        {/* Fixed header that appears when scrolling */}
         <div
-          className={`fixed top-0 left-0 right-0 z-50 bg-white shadow-md transition-transform duration-200 ${
-            isHeaderSticky ? "translate-y-0" : "-translate-y-full"
-          }`}
+          ref={tableScrollContainerRef}
+          className="overflow-x-auto overflow-y-visible"
         >
-          <div className="px-6">
-            <div className="flex items-center gap-4 bg-gray-50 py-3 border-gray-200 border-b">
-              <div className="flex-shrink-0 w-8"></div>
-              <div className="flex-shrink-0 w-12 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                #
-              </div>
-              <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                Field Name
-              </div>
-              <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                Attribute Label
-              </div>
-              <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                Survey Label
-              </div>
-              <div className="flex-shrink-0 w-32 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                Display Type
-              </div>
-              <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                Placeholder
-              </div>
-              <div className="flex-shrink-0 w-48 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                Options
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div ref={tableRef} className="overflow-x-auto">
           {/* Header row */}
-          <div ref={headerRef} className="bg-white">
-            <div className="flex items-center gap-4 bg-gray-50 px-6 py-3 border-gray-200 border-b">
-              <div className="flex-shrink-0 w-8"></div>
-              <div className="flex-shrink-0 w-12 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                #
-              </div>
+          <div className="bg-white shadow-sm">
+            <div
+              ref={tableHeaderRowRef}
+              className="flex items-center gap-4 bg-gray-50 pr-6 pl-12 py-3 border-gray-200 border-b"
+            >
               <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
                 Field Name
               </div>
@@ -1257,22 +1286,19 @@ export default function ConfigureQuestionsPage() {
               </div>
               <div className="flex-1 min-w-0 font-medium text-gray-500 text-xs uppercase tracking-wider">
                 Placeholder
-              </div>
-              <div className="flex-shrink-0 w-48 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                Options
               </div>
             </div>
           </div>
 
           {/* Data rows */}
-          <div className="bg-white divide-y divide-gray-200">
+          <div ref={tableDataRowsRef} className="bg-white divide-y divide-gray-200">
             {questionConfigs.map((config, index) => {
               const choiceValues = parseOptions(config.options);
 
               return (
                 <div
                   key={config.fieldName}
-                  className={`${!config.isEnabled ? "bg-gray-50" : ""} ${
+                  className={`relative ${!config.isEnabled ? "bg-gray-50" : ""} ${
                     config.isNewlyAdded
                       ? "bg-yellow-50 border-l-4 border-yellow-400"
                       : ""
@@ -1284,34 +1310,25 @@ export default function ConfigureQuestionsPage() {
                 >
                   {/* Main row */}
                   <div
-                    className={`flex items-center py-3 gap-4 px-6 hover:bg-gray-50`}
+                    className={`flex items-center py-3 gap-4 pr-6 pl-12 hover:bg-gray-50`}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, index)}
                   >
                     {/* Drag handle */}
-                    <div className="flex flex-shrink-0 justify-center items-center w-8">
-                      <div
-                        className="flex justify-center items-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-move"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, index)}
-                        onDragEnd={handleDragEnd}
+                    <div
+                      className="top-2 left-2 absolute flex justify-center items-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-move"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
                       >
-                        <svg
-                          className="w-4 h-4"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
-                        </svg>
-                      </div>
-                    </div>
-
-                    {/* Sort order */}
-                    <div className="flex flex-shrink-0 justify-center items-center w-12">
-                      <div className="flex justify-center items-center bg-blue-100 rounded-full w-6 h-6 font-medium text-blue-800 text-xs">
-                        {config.sortOrder}
-                      </div>
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                      </svg>
                     </div>
 
                     {/* Field name */}
@@ -1463,20 +1480,45 @@ export default function ConfigureQuestionsPage() {
                       )}
                     </div>
 
-                    {/* Options */}
-                    <div className="flex-shrink-0 w-48">
-                      <div className="space-y-2">
+                  </div>
+
+                  {/* Row 2: Options and toggles */}
+                  <div className="px-6 pb-3">
+                    <div className="text-xs">
+                      {choiceValues.length > 0 && (
+                        <div className="pb-2">
+                          <div
+                            className="grid gap-1"
+                            style={{
+                              gridTemplateColumns: `repeat(${Math.max(
+                                choiceValues.length,
+                                1
+                              )}, minmax(0, 1fr))`,
+                            }}
+                          >
+                            {choiceValues.map(
+                              (choice: string, choiceIndex: number) => (
+                                <span
+                                  key={choiceIndex}
+                                  className="inline-flex items-center justify-center bg-blue-100 px-2 py-1 rounded-full w-full min-h-7 font-medium text-blue-800 text-xs text-center"
+                                  title={choice}
+                                >
+                                  {choice}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="gap-2 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 pt-2 border-gray-100 border-t">
                         <button
                           onClick={() =>
                             !config.isOrphaned &&
-                            updateQuestionConfig(
-                              index,
-                              "isEnabled",
-                              !config.isEnabled
-                            )
+                            updateQuestionConfig(index, "isEnabled", !config.isEnabled)
                           }
                           disabled={config.isOrphaned}
-                          className={`flex items-center p-1 rounded transition-colors text-xs w-full ${
+                          className={`flex items-center justify-start px-2 py-1 rounded border border-gray-200 transition-colors text-left ${
                             config.isOrphaned
                               ? "cursor-not-allowed opacity-50"
                               : "hover:bg-gray-100 cursor-pointer"
@@ -1485,7 +1527,7 @@ export default function ConfigureQuestionsPage() {
                             config.isOrphaned
                               ? "Cannot enable - field no longer exists in source view"
                               : ""
-                          }
+                        }
                         >
                           {config.isEnabled ? (
                             <svg
@@ -1502,9 +1544,7 @@ export default function ConfigureQuestionsPage() {
                           ) : (
                             <svg
                               className={`w-4 h-4 mr-1 ${
-                                config.isOrphaned
-                                  ? "text-red-400"
-                                  : "text-red-600"
+                                config.isOrphaned ? "text-red-400" : "text-red-600"
                               }`}
                               fill="currentColor"
                               viewBox="0 0 20 20"
@@ -1519,113 +1559,69 @@ export default function ConfigureQuestionsPage() {
                           {config.isOrphaned ? "Will be deleted" : "Enabled"}
                         </button>
 
-                        <div className="gap-1 grid grid-cols-2 text-xs">
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={config.isRequired}
-                              onChange={(e) =>
-                                updateQuestionConfig(
-                                  index,
-                                  "isRequired",
-                                  e.target.checked
-                                )
-                              }
-                              disabled={!config.isEnabled}
-                              className="mr-1 w-3 h-3"
-                            />
-                            Required
-                          </label>
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={config.isVisible}
-                              onChange={(e) =>
-                                updateQuestionConfig(
-                                  index,
-                                  "isVisible",
-                                  e.target.checked
-                                )
-                              }
-                              disabled={!config.isEnabled}
-                              className="mr-1 w-3 h-3"
-                            />
-                            Visible
-                          </label>
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={config.isReadOnly}
-                              onChange={(e) =>
-                                updateQuestionConfig(
-                                  index,
-                                  "isReadOnly",
-                                  e.target.checked
-                                )
-                              }
-                              disabled={!config.isEnabled}
-                              className="mr-1 w-3 h-3"
-                            />
-                            Read Only
-                          </label>
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={config.isBlind}
-                              onChange={(e) =>
-                                updateQuestionConfig(
-                                  index,
-                                  "isBlind",
-                                  e.target.checked
-                                )
-                              }
-                              disabled={!config.isEnabled}
-                              className="mr-1 w-3 h-3"
-                            />
-                            Blind
-                          </label>
-                          <label className="flex items-center col-span-2">
-                            <input
-                              type="checkbox"
-                              checked={config.minIsCurrent}
-                              onChange={(e) =>
-                                updateQuestionConfig(
-                                  index,
-                                  "minIsCurrent",
-                                  e.target.checked
-                                )
-                              }
-                              disabled={!config.isEnabled}
-                              className="mr-1 w-3 h-3"
-                            />
-                            Min Is Current
-                          </label>
-                        </div>
+                        <label className="flex items-center justify-start gap-1 px-2 py-1 border border-gray-200 rounded">
+                          <input
+                            type="checkbox"
+                            checked={config.isRequired}
+                            onChange={(e) =>
+                              updateQuestionConfig(index, "isRequired", e.target.checked)
+                            }
+                            disabled={!config.isEnabled}
+                            className="w-3 h-3"
+                          />
+                          Required
+                        </label>
+                        <label className="flex items-center justify-start gap-1 px-2 py-1 border border-gray-200 rounded">
+                          <input
+                            type="checkbox"
+                            checked={config.isVisible}
+                            onChange={(e) =>
+                              updateQuestionConfig(index, "isVisible", e.target.checked)
+                            }
+                            disabled={!config.isEnabled}
+                            className="w-3 h-3"
+                          />
+                          Visible
+                        </label>
+                        <label className="flex items-center justify-start gap-1 px-2 py-1 border border-gray-200 rounded">
+                          <input
+                            type="checkbox"
+                            checked={config.isReadOnly}
+                            onChange={(e) =>
+                              updateQuestionConfig(index, "isReadOnly", e.target.checked)
+                            }
+                            disabled={!config.isEnabled}
+                            className="w-3 h-3"
+                          />
+                          Read Only
+                        </label>
+                        <label className="flex items-center justify-start gap-1 px-2 py-1 border border-gray-200 rounded">
+                          <input
+                            type="checkbox"
+                            checked={config.isBlind}
+                            onChange={(e) =>
+                              updateQuestionConfig(index, "isBlind", e.target.checked)
+                            }
+                            disabled={!config.isEnabled}
+                            className="w-3 h-3"
+                          />
+                          Blind
+                        </label>
+                        <label className="flex items-center justify-start gap-1 px-2 py-1 border border-gray-200 rounded">
+                          <input
+                            type="checkbox"
+                            checked={config.minIsCurrent}
+                            onChange={(e) =>
+                              updateQuestionConfig(index, "minIsCurrent", e.target.checked)
+                            }
+                            disabled={!config.isEnabled}
+                            className="w-3 h-3"
+                          />
+                          Min Is Current
+                        </label>
                       </div>
                     </div>
                   </div>
-
-                  {/* Option pills when options are available */}
-                  {choiceValues.length > 0 && (
-                    <div className="px-6 pb-3">
-                      <div className="ml-20">
-                        {" "}
-                        {/* Offset to align with content after drag handle and sort order */}
-                        <div className="flex flex-wrap gap-1">
-                          {choiceValues.map(
-                            (choice: string, choiceIndex: number) => (
-                              <span
-                                key={choiceIndex}
-                                className="inline-flex items-center bg-blue-100 px-2 py-1 rounded-full font-medium text-blue-800 text-xs"
-                              >
-                                {choice}
-                              </span>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}

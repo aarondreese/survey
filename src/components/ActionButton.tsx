@@ -9,6 +9,7 @@ interface ActionButtonProps {
   variant?: ActionButtonVariant;
   icon?: ReactNode;
   children: ReactNode;
+  className?: string;
 }
 
 const variantStyles: Record<ActionButtonVariant, string> = {
@@ -24,8 +25,9 @@ export default function ActionButton({
   variant = "blue",
   icon,
   children,
+  className,
 }: ActionButtonProps) {
-  const className = `inline-flex items-center gap-1 px-3 py-1 border rounded font-medium text-xs transition-colors ${variantStyles[variant]}`;
+  const buttonClassName = `inline-flex items-center gap-1 px-3 py-1 border rounded font-medium text-xs transition-colors ${variantStyles[variant]} ${className || ""}`;
 
   const content = (
     <>
@@ -41,14 +43,14 @@ export default function ActionButton({
 
   if (href) {
     return (
-      <Link href={href} className={className} onClick={handleClick}>
+      <Link href={href} className={buttonClassName} onClick={handleClick}>
         {content}
       </Link>
     );
   }
 
   return (
-    <button onClick={handleClick} className={className}>
+    <button onClick={handleClick} className={buttonClassName}>
       {content}
     </button>
   );

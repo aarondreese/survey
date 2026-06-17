@@ -17,6 +17,12 @@ import {
   SettingsIcon,
   CircleIcon,
   DotsHorizontalIcon,
+  TextTypeIcon,
+  NumberTypeIcon,
+  DateTypeIcon,
+  ChoiceTypeIcon,
+  BooleanTypeIcon,
+  ImageTypeIcon,
 } from "@/components/icons";
 
 interface SurveyTemplateHeader {
@@ -37,6 +43,290 @@ interface AvailableQuestionSet {
   questionCount: number;
 }
 
+const parseQuestionChoices = (choices?: string): string[] => {
+  if (!choices) return [];
+
+  try {
+    const parsed = JSON.parse(choices) as unknown;
+
+    if (typeof parsed === "string") {
+      return parsed
+        .split(/[|,;\n]/)
+        .map((choice) => choice.trim())
+        .filter((choice) => choice.length > 0);
+    }
+
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((choice) => {
+          if (typeof choice === "string") return choice;
+          if (typeof choice === "object" && choice !== null) {
+            const choiceObj = choice as Record<string, unknown>;
+            return String(
+              choiceObj.text ??
+                choiceObj.Text ??
+                choiceObj.label ??
+                choiceObj.name ??
+                choiceObj.Name ??
+                choiceObj.description ??
+                choiceObj.Description ??
+                choiceObj.value ??
+                choiceObj.Value ??
+                choiceObj.id ??
+                choiceObj.Id ??
+                "",
+            );
+          }
+          return "";
+        })
+        .filter((label) => label.trim().length > 0);
+    }
+
+    if (typeof parsed === "object" && parsed !== null) {
+      const parsedObj = parsed as Record<string, unknown>;
+      const nestedChoices = parsedObj.choices ?? parsedObj.options;
+
+      if (Array.isArray(nestedChoices)) {
+        return nestedChoices
+          .map((choice) => {
+            if (typeof choice === "string") return choice;
+            if (typeof choice === "object" && choice !== null) {
+              const choiceObj = choice as Record<string, unknown>;
+              return String(
+                choiceObj.text ??
+                  choiceObj.Text ??
+                  choiceObj.label ??
+                  choiceObj.name ??
+                  choiceObj.Name ??
+                  choiceObj.description ??
+                  choiceObj.Description ??
+                  choiceObj.value ??
+                  choiceObj.Value ??
+                  choiceObj.id ??
+                  choiceObj.Id ??
+                  "",
+              );
+            }
+            return "";
+          })
+          .filter((label) => label.trim().length > 0);
+      }
+
+      const trueLabel = parsedObj.trueLabel ?? parsedObj.true;
+      const falseLabel = parsedObj.falseLabel ?? parsedObj.false;
+
+      if (typeof trueLabel === "string" || typeof falseLabel === "string") {
+        return [
+          String(trueLabel ?? "True"),
+          String(falseLabel ?? "False"),
+        ].filter((label) => label.trim().length > 0);
+      }
+    }
+  } catch {
+    // Fall back to delimited string parsing when choices isn't JSON.
+  }
+
+  return choices
+    .split(/[|,;\n]/)
+    .map((choice) => choice.trim())
+    .filter((choice) => choice.length > 0);
+};
+
+const parseBooleanLabelsFromText = (text?: string): [string, string] | null => {
+  if (!text) return null;
+
+  const pipeTokens = text
+    .split("|")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  if (pipeTokens.length > 1) {
+    let trueLabel: string | null = null;
+    let falseLabel: string | null = null;
+
+    for (const token of pipeTokens) {
+      const lowerToken = token.toLowerCase();
+
+      const trueMatch = token.match(/^truelabel\s*[:=-]\s*(.+)$/i);
+      if (trueMatch && trueMatch[1].trim()) {
+        trueLabel = trueMatch[1].trim();
+      }
+
+      const falseMatch = token.match(/^falselabel\s*[:=-]\s*(.+)$/i);
+      if (falseMatch && falseMatch[1].trim()) {
+        falseLabel = falseMatch[1].trim();
+      }
+
+      if (lowerToken === "truelabel" || lowerToken === "true") {
+        trueLabel = trueLabel || "Yes";
+      }
+      if (lowerToken === "falselabel" || lowerToken === "false") {
+        falseLabel = falseLabel || "No";
+      }
+
+      if (lowerToken.startsWith("falselab")) {
+        falseLabel = falseLabel || "No";
+      }
+    }
+
+    if (trueLabel || falseLabel) {
+      return [trueLabel || "Yes", falseLabel || "No"];
+    }
+  }
+
+  const trueFalseMatch = text.match(
+    /true\s*[:=-]\s*([^;|,\n\)]+).*false\s*[:=-]\s*([^;|,\n\)]+)/i,
+  );
+  if (trueFalseMatch) {
+    return [trueFalseMatch[1].trim(), trueFalseMatch[2].trim()];
+  }
+
+  const yesNoMatch = text.match(
+    /yes\s*[:=-]\s*([^;|,\n\)]+).*no\s*[:=-]\s*([^;|,\n\)]+)/i,
+  );
+  if (yesNoMatch) {
+    return [yesNoMatch[1].trim(), yesNoMatch[2].trim()];
+  }
+
+  return null;
+};
+
+const getBooleanLabels = (
+  choices?: string,
+  description?: string,
+  surveyLabel?: string,
+): [string, string] => {
+  const fromChoices = parseQuestionChoices(choices);
+  if (fromChoices.length >= 2) {
+    return [fromChoices[0], fromChoices[1]];
+  }
+
+  const fromDescription = parseBooleanLabelsFromText(description);
+  if (fromDescription) {
+    return fromDescription;
+  }
+
+  const fromTitle = parseBooleanLabelsFromText(surveyLabel);
+  if (fromTitle) {
+    return fromTitle;
+  }
+
+  return ["Yes", "No"];
+};
+
+const getQuestionTypeIcon = (displayType: string) => {
+  const normalizedType = displayType.toLowerCase();
+
+  if (normalizedType.includes("date")) {
+    return <DateTypeIcon className="w-3.5 h-3.5 text-cyan-600" />;
+  }
+  if (
+    normalizedType.includes("number") ||
+    normalizedType.includes("int") ||
+    normalizedType.includes("decimal")
+  ) {
+    return <NumberTypeIcon className="w-3.5 h-3.5 text-blue-600" />;
+  }
+  if (normalizedType.includes("bool")) {
+    return <BooleanTypeIcon className="w-3.5 h-3.5 text-green-600" />;
+  }
+  if (
+    normalizedType.includes("dropdown") ||
+    normalizedType.includes("radio") ||
+    normalizedType.includes("check") ||
+    normalizedType.includes("lookup") ||
+    normalizedType.includes("select")
+  ) {
+    return <ChoiceTypeIcon className="w-3.5 h-3.5 text-amber-600" />;
+  }
+  if (normalizedType.includes("image")) {
+    return <ImageTypeIcon className="w-3.5 h-3.5 text-purple-600" />;
+  }
+
+  return <TextTypeIcon className="w-3.5 h-3.5 text-gray-600" />;
+};
+
+const getOptionDisplayLabel = (option: Record<string, unknown>): string => {
+  const labelCandidate =
+    option.Text ??
+    option.text ??
+    option.label ??
+    option.name ??
+    option.Name ??
+    option.description ??
+    option.Description ??
+    option.title ??
+    option.Title;
+
+  if (typeof labelCandidate === "string" && labelCandidate.trim().length > 0) {
+    return labelCandidate;
+  }
+
+  const valueCandidate =
+    option.Value ?? option.value ?? option.id ?? option.Id ?? "";
+  return String(valueCandidate);
+};
+
+const isBooleanDisplayType = (displayType: string): boolean => {
+  const normalizedType = displayType.toLowerCase();
+  return normalizedType.includes("bool");
+};
+
+const isDropdownDisplayType = (displayType: string): boolean => {
+  const normalizedType = displayType.toLowerCase();
+  return (
+    normalizedType.includes("dropdown") ||
+    normalizedType.includes("select") ||
+    normalizedType.includes("lookup") ||
+    normalizedType.includes("radio") ||
+    normalizedType.includes("check")
+  );
+};
+
+const getTextSubtype = (displayType: string, fieldName?: string): string | null => {
+  const normalizedType = displayType.toLowerCase();
+  const normalizedFieldName = (fieldName || "").toLowerCase();
+
+  if (
+    normalizedType.includes("textarea") ||
+    normalizedFieldName.includes("longtext") ||
+    normalizedFieldName.includes("maxtext")
+  ) {
+    return "Long Text";
+  }
+
+  if (normalizedType.includes("text")) {
+    return "Short Text";
+  }
+
+  return null;
+};
+
+const cleanQuestionLabel = (
+  surveyLabel?: string,
+  attributeLabel?: string,
+  fieldName?: string,
+  isBoolean?: boolean,
+): string => {
+  const baseLabel =
+    surveyLabel || attributeLabel || fieldName || "Unnamed question";
+  const withoutBooleanInterpretation = isBoolean
+    ? baseLabel
+        .split("|")[0]
+        .replace(/\s*[-–—]?\s*\(?\s*(true|yes)\s*[:=-].*$/i, "")
+    : baseLabel;
+
+  // Source metadata can append index-style trailing zeroes (e.g. "Address0",
+  // "Address 0", "Address-0", "Address(0)"). Strip that visual artifact.
+  const withoutTrailingZeroArtifact = withoutBooleanInterpretation
+    .replace(/\s*[\(\[]0[\)\]]\s*$/, "")
+    .replace(/\s*[-_:]\s*0\s*$/, "")
+    .replace(/\s+0\s*$/, "")
+    .replace(/([A-Za-z])0\s*$/, "$1");
+
+  return withoutTrailingZeroArtifact.trim();
+};
+
 export default function SurveyConfigurePage() {
   const params = useParams();
   const surveyId = params.id as string;
@@ -50,7 +340,7 @@ export default function SurveyConfigurePage() {
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalType, setModalType] = useState<"questionset" | "metaquestion">(
-    "questionset"
+    "questionset",
   );
   const [availableQuestionSets, setAvailableQuestionSets] = useState<
     AvailableQuestionSet[]
@@ -62,6 +352,9 @@ export default function SurveyConfigurePage() {
   const [adding, setAdding] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [sourceViewRecordsByName, setSourceViewRecordsByName] = useState<
+    Record<string, Record<string, unknown>[]>
+  >({});
 
   const fetchSurveyTemplateData = React.useCallback(async () => {
     try {
@@ -77,7 +370,7 @@ export default function SurveyConfigurePage() {
 
       // Fetch survey template questions with enriched data
       const questionsResponse = await fetch(
-        `/api/surveys/${surveyId}/questions`
+        `/api/surveys/${surveyId}/questions`,
       );
       if (!questionsResponse.ok) {
         throw new Error("Failed to fetch survey template questions");
@@ -88,7 +381,7 @@ export default function SurveyConfigurePage() {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to load survey template data"
+          : "Failed to load survey template data",
       );
     } finally {
       setLoading(false);
@@ -101,11 +394,123 @@ export default function SurveyConfigurePage() {
     }
   }, [surveyId, fetchSurveyTemplateData]);
 
+  useEffect(() => {
+    const fetchSourceViewRecords = async () => {
+      const sourceViewNames = Array.from(
+        new Set(
+          templateQuestions
+            .filter(isQuestionSetItem)
+            .map((item) => item.questionSetHeader?.sourceViewName)
+            .filter((name): name is string => Boolean(name && name.trim())),
+        ),
+      );
+
+      const missingSourceViews = sourceViewNames.filter(
+        (viewName) => !sourceViewRecordsByName[viewName],
+      );
+
+      if (missingSourceViews.length === 0) {
+        return;
+      }
+
+      try {
+        const fetchedEntries = await Promise.all(
+          missingSourceViews.map(async (viewName) => {
+            const response = await fetch(
+              `/api/database-data?viewName=${encodeURIComponent(viewName)}`,
+            );
+
+            if (!response.ok) {
+              return [viewName, []] as const;
+            }
+
+            const result = await response.json();
+            return [viewName, result.records || []] as const;
+          }),
+        );
+
+        setSourceViewRecordsByName((prev) => {
+          const next = { ...prev };
+          for (const [viewName, records] of fetchedEntries) {
+            next[viewName] = records;
+          }
+          return next;
+        });
+      } catch {
+        // Non-blocking: hover options can still fall back to saved choices.
+      }
+    };
+
+    if (templateQuestions.length > 0) {
+      void fetchSourceViewRecords();
+    }
+  }, [templateQuestions, sourceViewRecordsByName]);
+
+  const getChoiceLabelsFromSourceRecords = React.useCallback(
+    (
+      question: {
+        fieldName: string;
+        choices?: string;
+      },
+      sourceViewName?: string,
+    ): string[] => {
+      if (!sourceViewName) {
+        return parseQuestionChoices(question.choices);
+      }
+
+      const sourceRecords = sourceViewRecordsByName[sourceViewName] || [];
+      if (sourceRecords.length === 0) {
+        return parseQuestionChoices(question.choices);
+      }
+
+      const matchingSourceRecord = sourceRecords.find((record) => {
+        const sourceFieldName = String(record.fieldName || record.label || "");
+        return sourceFieldName === question.fieldName;
+      });
+
+      if (!matchingSourceRecord) {
+        return parseQuestionChoices(question.choices);
+      }
+
+      const sourceOptions =
+        matchingSourceRecord.options ?? matchingSourceRecord.Options;
+
+      if (Array.isArray(sourceOptions)) {
+        const labels = sourceOptions
+          .map((option) => {
+            if (typeof option === "string") return option;
+            if (typeof option === "object" && option !== null) {
+              return getOptionDisplayLabel(option as Record<string, unknown>);
+            }
+            return "";
+          })
+          .filter((label) => label.trim().length > 0);
+
+        if (labels.length > 0) {
+          return labels;
+        }
+      }
+
+      if (
+        typeof sourceOptions === "string" &&
+        sourceOptions.trim().length > 0
+      ) {
+        const labels = parseQuestionChoices(sourceOptions);
+        if (labels.length > 0) {
+          return labels;
+        }
+      }
+
+      return parseQuestionChoices(question.choices);
+    },
+    [sourceViewRecordsByName],
+  );
+
   const fetchAvailableQuestionSets = React.useCallback(async () => {
     try {
       setLoadingAvailable(true);
       const response = await fetch(
-        `/api/surveys/${surveyId}/available-questionsets`
+        `/api/surveys/${surveyId}/available-questionsets`,
       );
       if (!response.ok) {
         throw new Error("Failed to fetch available question sets");
@@ -116,7 +521,7 @@ export default function SurveyConfigurePage() {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to load available question sets"
+          : "Failed to load available question sets",
       );
     } finally {
       setLoadingAvailable(false);
@@ -127,7 +532,7 @@ export default function SurveyConfigurePage() {
     try {
       setLoadingAvailable(true);
       const response = await fetch(
-        `/api/surveys/${surveyId}/available-meta-questions`
+        `/api/surveys/${surveyId}/available-meta-questions`,
       );
       if (!response.ok) {
         throw new Error("Failed to fetch available meta-questions");
@@ -138,7 +543,7 @@ export default function SurveyConfigurePage() {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to load available meta-questions"
+          : "Failed to load available meta-questions",
       );
     } finally {
       setLoadingAvailable(false);
@@ -171,7 +576,7 @@ export default function SurveyConfigurePage() {
       setShowAddModal(false);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to add question set"
+        err instanceof Error ? err.message : "Failed to add question set",
       );
     } finally {
       setAdding(false);
@@ -193,7 +598,7 @@ export default function SurveyConfigurePage() {
           body: JSON.stringify({
             metaQuestionHeaderId: metaQuestionId,
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -207,7 +612,7 @@ export default function SurveyConfigurePage() {
       setShowAddModal(false);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to add meta-question"
+        err instanceof Error ? err.message : "Failed to add meta-question",
       );
     } finally {
       setAdding(false);
@@ -228,7 +633,7 @@ export default function SurveyConfigurePage() {
 
   const handleDragStart = (
     e: React.DragEvent<HTMLDivElement>,
-    index: number
+    index: number,
   ) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = "move";
@@ -255,7 +660,7 @@ export default function SurveyConfigurePage() {
 
   const handleDrop = async (
     e: React.DragEvent<HTMLDivElement>,
-    dropIndex: number
+    dropIndex: number,
   ) => {
     e.preventDefault();
 
@@ -290,7 +695,7 @@ export default function SurveyConfigurePage() {
   };
 
   const saveQuestionSetOrder = async (
-    reorderedQuestions: SurveyTemplateQuestion[]
+    reorderedQuestions: SurveyTemplateQuestion[],
   ) => {
     try {
       setReordering(true);
@@ -309,7 +714,7 @@ export default function SurveyConfigurePage() {
               sortOrder: q.sortOrder,
             })),
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -318,7 +723,7 @@ export default function SurveyConfigurePage() {
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to reorder question sets"
+        err instanceof Error ? err.message : "Failed to reorder question sets",
       );
       // Refresh the data to get the correct order back
       await fetchSurveyTemplateData();
@@ -503,6 +908,21 @@ export default function SurveyConfigurePage() {
             templateQuestions.map((templateQuestion, index) => {
               const isQuestionSet = isQuestionSetItem(templateQuestion);
               const isMetaQuestion = isMetaQuestionItem(templateQuestion);
+              const titleText =
+                (isQuestionSet && templateQuestion.questionSetHeader?.name) ||
+                (isMetaQuestion &&
+                  templateQuestion.metaQuestionHeader?.description) ||
+                `Item ${templateQuestion.id}`;
+              const titleHoverText = isQuestionSet
+                ? [
+                    `Question Set ID: ${templateQuestion.questionSetHeaderId ?? "N/A"}`,
+                    `Source View: ${templateQuestion.questionSetHeader?.sourceViewName || "N/A"}`,
+                    `Type: ${templateQuestion.questionSetHeader?.subscript || "N/A"}`,
+                  ].join("\n")
+                : [
+                    `Meta-Question ID: ${templateQuestion.metaQuestionHeaderId ?? "N/A"}`,
+                    "Type: Meta-Question",
+                  ].join("\n");
 
               return (
                 <div
@@ -531,33 +951,16 @@ export default function SurveyConfigurePage() {
 
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <div
-                            className={`flex justify-center items-center rounded-full w-6 h-6 font-medium text-xs ${
+                          <span
+                            title={titleHoverText}
+                            className={`inline-flex items-center px-3 py-1 rounded-full font-medium text-sm ${
                               isQuestionSet
                                 ? "bg-blue-100 text-blue-800"
                                 : "bg-purple-100 text-purple-800"
                             }`}
                           >
-                            {templateQuestion.sortOrder}
-                          </div>
-                          {isQuestionSet && (
-                            <span className="inline-flex items-center bg-blue-50 px-2 py-0.5 rounded-full font-medium text-blue-700 text-xs">
-                              Question Set
-                            </span>
-                          )}
-                          {isMetaQuestion && (
-                            <span className="inline-flex items-center bg-purple-50 px-2 py-0.5 rounded-full font-medium text-purple-700 text-xs">
-                              Meta-Question
-                            </span>
-                          )}
-                          <h4 className="font-medium text-gray-900 text-lg">
-                            {(isQuestionSet &&
-                              templateQuestion.questionSetHeader?.name) ||
-                              (isMetaQuestion &&
-                                templateQuestion.metaQuestionHeader
-                                  ?.description) ||
-                              `Item ${templateQuestion.id}`}
-                          </h4>
+                            {titleText}
+                          </span>
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                               templateQuestion.isActive
@@ -572,52 +975,6 @@ export default function SurveyConfigurePage() {
                         {/* Question Set Content */}
                         {isQuestionSet && (
                           <>
-                            {templateQuestion.questionSetHeader
-                              ?.description && (
-                              <p className="mb-3 text-gray-600 text-sm">
-                                {templateQuestion.questionSetHeader.description}
-                              </p>
-                            )}
-
-                            <div className="gap-4 grid grid-cols-1 md:grid-cols-3 mb-4">
-                              <div>
-                                <label className="font-medium text-gray-700 text-xs">
-                                  Question Set ID
-                                </label>
-                                <p className="text-gray-900 text-sm">
-                                  {templateQuestion.questionSetHeaderId}
-                                </p>
-                              </div>
-                              {templateQuestion.questionSetHeader
-                                ?.sourceViewName && (
-                                <div>
-                                  <label className="font-medium text-gray-700 text-xs">
-                                    Source View
-                                  </label>
-                                  <p className="text-gray-900 text-sm">
-                                    {
-                                      templateQuestion.questionSetHeader
-                                        .sourceViewName
-                                    }
-                                  </p>
-                                </div>
-                              )}
-                              {templateQuestion.questionSetHeader
-                                ?.subscript && (
-                                <div>
-                                  <label className="font-medium text-gray-700 text-xs">
-                                    Type
-                                  </label>
-                                  <p className="text-gray-900 text-sm">
-                                    {
-                                      templateQuestion.questionSetHeader
-                                        .subscript
-                                    }
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-
                             {/* Questions Preview */}
                             {templateQuestion.questions &&
                               templateQuestion.questions.length > 0 && (
@@ -628,36 +985,111 @@ export default function SurveyConfigurePage() {
                                   </label>
                                   <div className="bg-gray-50 p-3 rounded-md">
                                     <div className="gap-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                                      {templateQuestion.questions
-                                        .slice(0, 6)
-                                        .map((question) => (
-                                          <div
-                                            key={question.id}
-                                            className="flex items-center gap-2"
-                                          >
+                                      {templateQuestion.questions.map(
+                                        (question) => {
+                                          const choiceLabels =
+                                            getChoiceLabelsFromSourceRecords(
+                                              question,
+                                              templateQuestion.questionSetHeader
+                                                ?.sourceViewName,
+                                            );
+                                          const isBooleanQuestion =
+                                            isBooleanDisplayType(
+                                              question.displayType,
+                                            );
+                                          const isDropdownQuestion =
+                                            isDropdownDisplayType(
+                                              question.displayType,
+                                            );
+                                          const [trueLabel, falseLabel] =
+                                            getBooleanLabels(
+                                              question.choices,
+                                              question.description,
+                                              question.surveyLabel,
+                                            );
+                                          const textSubtype = getTextSubtype(
+                                            question.displayType,
+                                            question.fieldName,
+                                          );
+                                          const questionTitle =
+                                            cleanQuestionLabel(
+                                              question.surveyLabel,
+                                              question.attributeLabel,
+                                              question.fieldName,
+                                              isBooleanQuestion,
+                                            );
+                                          const displayQuestionTitle =
+                                            questionTitle
+                                              .replace(/\s*0\s*$/, "")
+                                              .trim() || questionTitle;
+
+                                          const questionHoverLines = [
+                                            `Display Type: ${question.displayType}`,
+                                          ];
+
+                                          if (textSubtype) {
+                                            questionHoverLines.push(
+                                              `Text Type: ${textSubtype}`,
+                                            );
+                                          }
+
+                                          if (
+                                            isDropdownQuestion &&
+                                            choiceLabels.length > 0
+                                          ) {
+                                            questionHoverLines.push(
+                                              "Dropdown options:",
+                                              ...choiceLabels.map(
+                                                (label) => `- ${label}`,
+                                              ),
+                                            );
+                                          }
+
+                                          if (isBooleanQuestion) {
+                                            questionHoverLines.push(
+                                              "Boolean values:",
+                                              `- True: ${trueLabel}`,
+                                              `- False: ${falseLabel}`,
+                                            );
+                                          }
+
+                                          const questionHover =
+                                            questionHoverLines.join("\n");
+
+                                          return (
                                             <div
-                                              className={`w-2 h-2 rounded-full ${
-                                                question.isRequired
-                                                  ? "bg-red-400"
-                                                  : "bg-gray-300"
-                                              }`}
-                                            ></div>
-                                            <span className="text-gray-700 text-xs truncate">
-                                              {question.surveyLabel}
-                                            </span>
-                                            <span className="bg-gray-200 px-1 rounded text-gray-500 text-xs">
-                                              {question.displayType}
-                                            </span>
-                                          </div>
-                                        ))}
-                                      {templateQuestion.questions.length >
-                                        6 && (
-                                        <div className="text-gray-500 text-xs italic">
-                                          +
-                                          {templateQuestion.questions.length -
-                                            6}{" "}
-                                          more questions
-                                        </div>
+                                              key={question.id}
+                                              className="group relative flex items-center gap-2"
+                                            >
+                                              <div className="flex flex-shrink-0 justify-center items-center w-4">
+                                                {getQuestionTypeIcon(
+                                                  question.displayType,
+                                                )}
+                                              </div>
+                                              <span className="text-gray-700 text-xs truncate">
+                                                {displayQuestionTitle}
+                                              </span>
+                                              {choiceLabels.length > 0 &&
+                                                !isBooleanQuestion && (
+                                                  <span className="bg-amber-100 px-1.5 py-0.5 rounded-full text-[10px] text-amber-700 leading-none">
+                                                    {choiceLabels.length}{" "}
+                                                    options
+                                                  </span>
+                                                )}
+                                              {Boolean(question.isRequired) && (
+                                                <span
+                                                  className="font-semibold text-red-500 text-xs"
+                                                  title="Required"
+                                                >
+                                                  *
+                                                </span>
+                                              )}
+                                              <div className="invisible group-hover:visible top-full left-0 z-20 absolute bg-white opacity-0 group-hover:opacity-100 shadow-lg mt-1 p-2 border border-gray-200 rounded-md w-72 text-[11px] text-gray-700 whitespace-pre-line transition-opacity duration-150 pointer-events-none">
+                                                {questionHover}
+                                              </div>
+                                            </div>
+                                          );
+                                        },
                                       )}
                                     </div>
                                   </div>
@@ -716,9 +1148,13 @@ export default function SurveyConfigurePage() {
                           View Details
                         </Link>
                       )}
-                      <button className="inline-flex items-center gap-1 bg-gray-50 hover:bg-gray-100 px-2 py-1 border border-gray-200 rounded font-medium text-gray-600 text-xs">
+                      <button
+                        disabled
+                        title="Rules configuration is not available yet"
+                        className="inline-flex items-center gap-1 bg-gray-50 opacity-70 px-2 py-1 border border-gray-200 rounded font-medium text-gray-400 text-xs cursor-not-allowed"
+                      >
                         <DotsHorizontalIcon />
-                        Options
+                        Rules
                       </button>
                     </div>
                   </div>
@@ -739,7 +1175,7 @@ export default function SurveyConfigurePage() {
                     (tq.questionType === "QuestionSet"
                       ? tq.questions?.length || 0
                       : 0),
-                  0
+                  0,
                 )}{" "}
                 questions across {templateQuestions.length} question sets
               </div>

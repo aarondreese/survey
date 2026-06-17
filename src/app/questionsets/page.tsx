@@ -367,52 +367,54 @@ export default function QuestionSetsPage() {
                   isSelected={selectedQuestionSet?.id === questionSet.id}
                   onClick={() => handleQuestionSetSelect(questionSet)}
                 >
-                  <div>
-                    <div className="font-medium">{questionSet.name}</div>
-                    {questionSet.description && (
-                      <div className="mt-1 text-gray-600 text-sm">
-                        {questionSet.description}
-                      </div>
-                    )}
-                    <div className="mt-1 text-gray-500 text-xs">
-                      ID: {questionSet.id}
-                      {questionSet.subscript && (
-                        <span className="ml-2">
-                          Type: {questionSet.subscript}
-                        </span>
+                  <div className="gap-4 grid grid-cols-1 lg:grid-cols-[1fr_auto] lg:items-start">
+                    <div className="min-w-0">
+                      <div className="font-medium">{questionSet.name}</div>
+                      {questionSet.description && (
+                        <div className="mt-1 text-gray-600 text-sm">
+                          {questionSet.description}
+                        </div>
                       )}
-                      {questionSet.sourceViewName && (
-                        <span className="ml-2">
-                          Source: {questionSet.sourceViewName}
-                        </span>
-                      )}
-                      {selectedQuestionSet?.id === questionSet.id &&
-                        questions.length > 0 && (
+                      <div className="mt-1 text-gray-500 text-xs">
+                        ID: {questionSet.id}
+                        {questionSet.subscript && (
                           <span className="ml-2">
-                            Questions: {questions.length} (
-                            {questions.filter((q) => q.isVisible).length}{" "}
-                            visible)
+                            Type: {questionSet.subscript}
                           </span>
                         )}
+                        {questionSet.sourceViewName && (
+                          <span className="ml-2">
+                            Source: {questionSet.sourceViewName}
+                          </span>
+                        )}
+                        {selectedQuestionSet?.id === questionSet.id &&
+                          questions.length > 0 && (
+                            <span className="ml-2">
+                              Questions: {questions.length} (
+                              {questions.filter((q) => q.isVisible).length}{" "}
+                              visible)
+                            </span>
+                          )}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Action buttons */}
-                  <div className="flex justify-end gap-2 mt-3 pt-2 border-gray-100 border-t">
-                    <ActionButton
-                      href={`/questionsets/${questionSet.id}/edit`}
-                      variant="green"
-                      icon={<PencilIcon />}
-                    >
-                      Edit Header
-                    </ActionButton>
-                    <ActionButton
-                      href={`/questionsets/${questionSet.id}/configure`}
-                      variant="blue"
-                      icon={<EditIcon />}
-                    >
-                      Edit Questions
-                    </ActionButton>
+                    {/* Action buttons */}
+                    <div className="flex lg:flex-col justify-end gap-2 mt-3 lg:mt-0 pt-2 lg:pt-0 border-gray-100 lg:border-0 border-t">
+                      <ActionButton
+                        href={`/questionsets/${questionSet.id}/edit`}
+                        variant="green"
+                        icon={<PencilIcon />}
+                      >
+                        Edit Header
+                      </ActionButton>
+                      <ActionButton
+                        href={`/questionsets/${questionSet.id}/configure`}
+                        variant="blue"
+                        icon={<EditIcon />}
+                      >
+                        Edit Questions
+                      </ActionButton>
+                    </div>
                   </div>
                 </ListCard>
               ))}
