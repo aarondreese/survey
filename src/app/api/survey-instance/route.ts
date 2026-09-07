@@ -34,7 +34,15 @@ export async function POST(request: NextRequest) {
         dbRequest.input('SurveyTemplateHeaderID', sql.Int, surveyTemplateHeaderId);
         dbRequest.input('EntityReference', sql.VarChar(100), entityReference);
         dbRequest.input('ChunkData', sql.NVarChar(sql.MAX), chunk);
-        
+        // Debug: log whether first chunk contains meta-contents
+        try {
+          const containsMeta = typeof chunk === 'string' && chunk.indexOf('meta-contents') !== -1;
+          console.log(`POST /api/survey-instance first chunk contains meta-contents: ${containsMeta}`);
+          if (containsMeta) console.log('POST /api/survey-instance chunk excerpt:', chunk.substring(0, 1000));
+        } catch (e) {
+          console.warn('POST /api/survey-instance failed to inspect chunk for meta-contents');
+        }
+
         const result = await dbRequest.query(
           `INSERT INTO SurveyInstance 
             (SurveyTemplateHeaderID, EntityReference, SurveyJSON, InstanceCreatedDate)

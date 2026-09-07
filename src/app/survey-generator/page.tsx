@@ -133,11 +133,16 @@ export default function ScratchPage() {
 
     // Verify choices structure
     if (choices && Array.isArray(choices)) {
-      // Normalize choices to ensure lowercase 'value' and 'text' properties
-      element.choices = choices.map((choice: any) => ({
-        value: choice.value !== undefined ? choice.value : choice.Value,
-        text: choice.text !== undefined ? choice.text : choice.Text,
-      }));
+      // Normalize choices but preserve any additional properties (e.g., meta-contents)
+      element.choices = choices.map((choice: any) => {
+        if (choice && typeof choice === 'object') {
+          const v = choice.value !== undefined ? choice.value : choice.Value;
+          const t = choice.text !== undefined ? choice.text : choice.Text;
+          return { ...choice, value: v, text: t };
+        }
+        // Primitive value (number/string) -> convert to object
+        return { value: choice, text: String(choice) };
+      });
 
       // Update the local choices variable to use normalized version
       choices = element.choices;
@@ -265,6 +270,15 @@ export default function ScratchPage() {
         data: currentData
       };
 
+      // Debug: check for meta-contents presence before saving
+      try {
+        const containsMeta = JSON.stringify(surveyToSave).includes('meta-contents');
+        console.log('handleSaveSurvey - surveyToSave contains meta-contents?', containsMeta);
+        if (containsMeta) console.log('handleSaveSurvey - excerpt:', JSON.stringify(surveyToSave).substring(0, 1000));
+      } catch (e) {
+        console.warn('handleSaveSurvey - failed to inspect surveyToSave for meta-contents');
+      }
+
       const jsonString = JSON.stringify(surveyToSave);
 
       // Chunk size: 50KB to be safe (well under 64KB limit)
@@ -345,7 +359,7 @@ export default function ScratchPage() {
       // Build survey data object to hold all current values
       const surveyData: Record<string, any> = {};
 
-      // Parse all pages from API
+      // Parse all pages from API and normalise different JSON shapes
       const parsedPages = data.pages
         .map(
           (page: {
@@ -361,9 +375,23 @@ export default function ScratchPage() {
               return null;
             }
 
-            const pageData = Array.isArray(page.ParsedJSON)
-              ? page.ParsedJSON[0]
-              : page.ParsedJSON;
+            // Normalise cases where the stored proc returns an array of question objects
+            // (e.g. [{ type: 'Dropdown', name: 'Primary Heat Source', ... }]) instead of a page wrapper
+            let parsedJSON = page.ParsedJSON;
+            if (Array.isArray(parsedJSON) && parsedJSON.length > 0) {
+              const first = parsedJSON[0];
+              if (first && typeof first === 'object') {
+                // If first element looks like a question (has 'type'), wrap as page.elements
+                if ('type' in first && !('elements' in first)) {
+                  parsedJSON = { elements: parsedJSON };
+                } else {
+                  // It's likely a page-wrapped array (FOR JSON may return [ { title, elements } ])
+                  parsedJSON = parsedJSON[0];
+                }
+              }
+            }
+
+            const pageData = Array.isArray(parsedJSON) ? parsedJSON[0] : parsedJSON;
 
             // Extract instance and attributeId - prefer API level, fallback to ParsedJSON
             const instanceId = page.InstanceID ?? pageData.instance;

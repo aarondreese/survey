@@ -13,12 +13,12 @@ export default function Home() {
 
         {/* Navigation Cards */}
         <div className="gap-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-12">
-          <Link href="/survey" className="group">
-            <div className="bg-white shadow-md hover:shadow-lg p-6 border border-gray-200 group-hover:border-blue-300 rounded-lg transition-shadow">
+          <Link href="/survey-generator" className="group">
+            <div className="bg-white shadow-md hover:shadow-lg p-6 border border-gray-200 group-hover:border-indigo-300 rounded-lg transition-shadow">
               <div className="flex items-center mb-4">
-                <div className="flex justify-center items-center bg-blue-100 mr-4 rounded-lg w-12 h-12">
+                <div className="flex justify-center items-center bg-indigo-100 mr-4 rounded-lg w-12 h-12">
                   <svg
-                    className="w-6 h-6 text-blue-600"
+                    className="w-6 h-6 text-indigo-600"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -27,16 +27,46 @@ export default function Home() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      d="M12 4v16m8-8H4"
                     />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 text-lg">
-                    Take Survey
+                  <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 text-lg">
+                    Generate New Survey
                   </h3>
                   <p className="text-gray-600 text-sm">
-                    Complete the customer feedback survey
+                    Generate survey from stored procedure
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Link>
+
+          <Link href="/survey-instances" className="group">
+            <div className="bg-white shadow-md hover:shadow-lg p-6 border border-gray-200 group-hover:border-teal-300 rounded-lg transition-shadow">
+              <div className="flex items-center mb-4">
+                <div className="flex justify-center items-center bg-teal-100 mr-4 rounded-lg w-12 h-12">
+                  <svg
+                    className="w-6 h-6 text-teal-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900 group-hover:text-teal-600 text-lg">
+                    Complete Survey
+                  </h3>
+                  <p className="text-gray-600 text-sm">
+                    View and complete saved survey instances
                   </p>
                 </div>
               </div>
@@ -157,66 +187,6 @@ export default function Home() {
                   </h3>
                   <p className="text-gray-600 text-sm">
                     Manage validation and business rules
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Link>
-
-          <Link href="/survey-generator" className="group">
-            <div className="bg-white shadow-md hover:shadow-lg p-6 border border-gray-200 group-hover:border-indigo-300 rounded-lg transition-shadow">
-              <div className="flex items-center mb-4">
-                <div className="flex justify-center items-center bg-indigo-100 mr-4 rounded-lg w-12 h-12">
-                  <svg
-                    className="w-6 h-6 text-indigo-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 text-lg">
-                    Generate New Survey
-                  </h3>
-                  <p className="text-gray-600 text-sm">
-                    Generate survey from stored procedure
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Link>
-
-          <Link href="/survey-instances" className="group">
-            <div className="bg-white shadow-md hover:shadow-lg p-6 border border-gray-200 group-hover:border-teal-300 rounded-lg transition-shadow">
-              <div className="flex items-center mb-4">
-                <div className="flex justify-center items-center bg-teal-100 mr-4 rounded-lg w-12 h-12">
-                  <svg
-                    className="w-6 h-6 text-teal-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900 group-hover:text-teal-600 text-lg">
-                    Complete Surveys
-                  </h3>
-                  <p className="text-gray-600 text-sm">
-                    View and complete saved survey instances
                   </p>
                 </div>
               </div>
