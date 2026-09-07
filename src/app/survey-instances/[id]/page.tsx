@@ -26,21 +26,21 @@ interface SurveyInstanceDetail {
 
 // Helper function to convert image type elements to file type with camera support
 function convertImageToFile(element: any) {
-  if (element.type === 'image') {
+  if (element.type === "image") {
     const isReadOnly = element.readOnly === true;
-    
+
     if (!isReadOnly) {
       // Convert to file type with camera capture
-      element.type = 'file';
-      element.sourceType = 'file-camera';
-      element.acceptedTypes = 'image/*';
+      element.type = "file";
+      element.sourceType = "file-camera";
+      element.acceptedTypes = "image/*";
       element.storeDataAsText = true;
       element.allowImagesPreview = true;
       element.maxSize = 10485760; // 10MB
       element.needConfirmRemoveFile = false;
       element.waitForUpload = true;
       element.allowMultiple = false;
-      
+
       // Clean up image-specific properties
       delete element.imageLink;
       delete element.contentMode;
@@ -51,14 +51,21 @@ function convertImageToFile(element: any) {
 export default function SurveyInstanceDetailPage() {
   const params = useParams();
   const instanceId = params.id as string;
-  
+
   const [instance, setInstance] = useState<SurveyInstanceDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [surveyModel, setSurveyModel] = useState<Model | null>(null);
   const surveyModelRef = useRef<Model | null>(null);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
-  const [debugState, setDebugState] = useState<any>({ messages: [], lastChoice: null, embedded: null, surveyJson: null });
+  const [debugState, setDebugState] = useState<any>({
+    messages: [],
+    lastChoice: null,
+    embedded: null,
+    surveyJson: null,
+    originalSurveyJson: null,
+    modelSnapshot: null,
+  });
 
   // Handler: when a meta-question option contains embedded question-set JSON
   // under `meta-contents`, inject those elements into the current page.
@@ -84,11 +91,32 @@ export default function SurveyInstanceDetailPage() {
       }
       if (!choiceObj) return;
 
-      const embedded = choiceObj["meta-contents"] || choiceObj.metaContents || choiceObj.meta_contents || choiceObj.questionSet || choiceObj.questionSetJson || null;
-      console.log('meta-choice selected', { name: qName, value: selectedValue, choiceObj, embedded });
-      setDebugState((s: any) => ({ ...s, messages: [...s.messages, `meta-choice selected: ${qName}=${String(selectedValue)}`], lastChoice: choiceObj, embedded }));
+      const embedded =
+        choiceObj["meta-contents"] ||
+        choiceObj.metaContents ||
+        choiceObj.meta_contents ||
+        choiceObj.questionSet ||
+        choiceObj.questionSetJson ||
+        null;
+      console.log("meta-choice selected", {
+        name: qName,
+        value: selectedValue,
+        choiceObj,
+        embedded,
+      });
+      setDebugState((s: any) => ({
+        ...s,
+        messages: [
+          ...s.messages,
+          `meta-choice selected: ${qName}=${String(selectedValue)}`,
+        ],
+        lastChoice: choiceObj,
+        embedded,
+      }));
       if (!embedded) {
-        console.log('No embedded meta-contents found on choice, will attempt fallback fetch');
+        console.log(
+          "No embedded meta-contents found on choice, will attempt fallback fetch",
+        );
       }
       if (!embedded) return;
 
@@ -97,7 +125,8 @@ export default function SurveyInstanceDetailPage() {
         try {
           const parsed = JSON.parse(embedded);
           if (Array.isArray(parsed)) elems = parsed;
-          else if (parsed && Array.isArray(parsed.elements)) elems = parsed.elements;
+          else if (parsed && Array.isArray(parsed.elements))
+            elems = parsed.elements;
           else elems = [parsed];
         } catch {
           return;
@@ -124,17 +153,30 @@ export default function SurveyInstanceDetailPage() {
               const qsData = await qsRes.json();
               const qsHeader = qsData?.data;
               const qsQuestionsData = await qsQuestionsRes.json();
-              const questionsArray = Array.isArray(qsQuestionsData?.data) ? qsQuestionsData.data : [];
+              const questionsArray = Array.isArray(qsQuestionsData?.data)
+                ? qsQuestionsData.data
+                : [];
 
               // Map into elements similar to embedded flow
               const mappedElems = questionsArray.map((q: any, idx: number) => {
                 const el: any = {
-                  type: (q.displayType && String(q.displayType).toLowerCase().includes('date')) ? 'date' : (q.displayType ? q.displayType : 'text'),
+                  type:
+                    q.displayType &&
+                    String(q.displayType).toLowerCase().includes("date")
+                      ? "date"
+                      : q.displayType
+                        ? q.displayType
+                        : "text",
                   name: q.fieldName || `qs_${qsId}_q_${idx}`,
-                  title: q.surveyLabel || q.attributeLabel || q.fieldName || `Question ${idx+1}`,
+                  title:
+                    q.surveyLabel ||
+                    q.attributeLabel ||
+                    q.fieldName ||
+                    `Question ${idx + 1}`,
                   choices: (() => {
                     try {
-                      if (q.choices && typeof q.choices === 'string') return JSON.parse(q.choices);
+                      if (q.choices && typeof q.choices === "string")
+                        return JSON.parse(q.choices);
                     } catch {}
                     return Array.isArray(q.choices) ? q.choices : undefined;
                   })(),
@@ -145,33 +187,58 @@ export default function SurveyInstanceDetailPage() {
               });
 
               if (mappedElems.length > 0) {
-                console.log('Fallback fetched question-set mappedElems', mappedElems);
-                setDebugState((s: any) => ({ ...s, messages: [...s.messages, `Fetched and mapped ${mappedElems.length} questions for question-set ${qsId}`], lastChoice: choiceObj, embedded: mappedElems }));
+                console.log(
+                  "Fallback fetched question-set mappedElems",
+                  mappedElems,
+                );
+                setDebugState((s: any) => ({
+                  ...s,
+                  messages: [
+                    ...s.messages,
+                    `Fetched and mapped ${mappedElems.length} questions for question-set ${qsId}`,
+                  ],
+                  lastChoice: choiceObj,
+                  embedded: mappedElems,
+                }));
                 // Inject mapped elements into page
                 const page = question.page;
                 if (!page) return;
                 const panelName = `meta_injected_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
                 let newPanel: any = null;
-                if (typeof page.addNewPanel === 'function') newPanel = page.addNewPanel(panelName);
+                if (typeof page.addNewPanel === "function")
+                  newPanel = page.addNewPanel(panelName);
                 mappedElems.forEach((el: any, idx: number) => {
-                  const qType = String(el.type || 'text');
-                  const qNameLocal = String(el.name || `meta_${panelName}_${idx}`);
+                  const qType = String(el.type || "text");
+                  const qNameLocal = String(
+                    el.name || `meta_${panelName}_${idx}`,
+                  );
                   let newQ: any = null;
-                  if (newPanel && typeof newPanel.addNewQuestion === 'function') newQ = newPanel.addNewQuestion(qType, qNameLocal);
-                  else if (typeof page.addNewQuestion === 'function') newQ = page.addNewQuestion(qType, qNameLocal);
-                  if (!newQ) { page.elements.push(el); return; }
+                  if (newPanel && typeof newPanel.addNewQuestion === "function")
+                    newQ = newPanel.addNewQuestion(qType, qNameLocal);
+                  else if (typeof page.addNewQuestion === "function")
+                    newQ = page.addNewQuestion(qType, qNameLocal);
+                  if (!newQ) {
+                    page.elements.push(el);
+                    return;
+                  }
                   newQ.title = el.title;
                   newQ.isRequired = el.isRequired === true;
                   if (Array.isArray(el.choices)) newQ.choices = el.choices;
-                  if (el.defaultValue !== undefined) newQ.defaultValue = el.defaultValue;
+                  if (el.defaultValue !== undefined)
+                    newQ.defaultValue = el.defaultValue;
                 });
 
-                try { question.visible = false; } catch {}
+                try {
+                  question.visible = false;
+                } catch {}
                 surveyModelRef.current = sender;
                 setSurveyModel(sender);
               }
             } catch (err) {
-              console.error('Failed to fetch/inject question-set fallback:', err);
+              console.error(
+                "Failed to fetch/inject question-set fallback:",
+                err,
+              );
             }
           })();
         }
@@ -183,8 +250,14 @@ export default function SurveyInstanceDetailPage() {
 
       const panelName = `meta_injected_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
       let newPanel: any = null;
-      console.log('Injecting meta elements into page', { panelName, elems });
-      setDebugState((s: any) => ({ ...s, messages: [...s.messages, `Injecting ${elems.length} elements into page ${page.name || '<unnamed>'}`] }));
+      console.log("Injecting meta elements into page", { panelName, elems });
+      setDebugState((s: any) => ({
+        ...s,
+        messages: [
+          ...s.messages,
+          `Injecting ${elems.length} elements into page ${page.name || "<unnamed>"}`,
+        ],
+      }));
       if (typeof page.addNewPanel === "function") {
         newPanel = page.addNewPanel(panelName);
       } else {
@@ -194,7 +267,9 @@ export default function SurveyInstanceDetailPage() {
 
       elems.forEach((el: any, idx: number) => {
         const qType = String(el.type || el.questionType || "text");
-        const qNameLocal = String(el.name || el.fieldName || `meta_${panelName}_${idx}`);
+        const qNameLocal = String(
+          el.name || el.fieldName || `meta_${panelName}_${idx}`,
+        );
         let newQ: any = null;
         if (newPanel && typeof newPanel.addNewQuestion === "function") {
           newQ = newPanel.addNewQuestion(qType, qNameLocal);
@@ -227,37 +302,43 @@ export default function SurveyInstanceDetailPage() {
     }
   }, []);
 
-  const handleSurveyComplete = useCallback(async (sender: Model) => {
-    try {
-      const response = await fetch("/api/survey-instance", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: instanceId,
-          completedJson: sender.data,
-          completedDate: new Date().toISOString()
-        }),
-      });
+  const handleSurveyComplete = useCallback(
+    async (sender: Model) => {
+      try {
+        const response = await fetch("/api/survey-instance", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: instanceId,
+            completedJson: sender.data,
+            completedDate: new Date().toISOString(),
+          }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to save survey");
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to save survey");
+        }
+
+        alert("Survey completed and saved successfully!");
+        window.location.reload();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save survey");
+        alert(
+          "Error saving survey: " +
+            (err instanceof Error ? err.message : "Unknown error"),
+        );
       }
-
-      alert("Survey completed and saved successfully!");
-      window.location.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save survey");
-      alert("Error saving survey: " + (err instanceof Error ? err.message : "Unknown error"));
-    }
-  }, [instanceId]);
+    },
+    [instanceId],
+  );
 
   const fetchInstance = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/survey-instance?id=${instanceId}`);
       if (!response.ok) throw new Error("Failed to fetch survey instance");
-      
+
       const result = await response.json();
       const instanceData = result.data;
       setInstance(instanceData);
@@ -265,14 +346,22 @@ export default function SurveyInstanceDetailPage() {
       // Parse and create survey model
       if (instanceData.SurveyJSON) {
         const surveyJson = JSON.parse(instanceData.SurveyJSON);
-        
+        // Save original DB JSON for debug comparison
+        try {
+          setDebugState((s: any) => ({ ...s, originalSurveyJson: surveyJson, messages: [...s.messages, 'Loaded original SurveyJSON from DB'] }));
+          const containsMeta = JSON.stringify(surveyJson).includes('meta-contents');
+          console.log('fetchInstance - original SurveyJSON contains meta-contents?', containsMeta);
+        } catch (e) {
+          console.warn('fetchInstance - failed to set debug originalSurveyJson');
+        }
+
         // Convert image fields to file type with camera support
         if (surveyJson.pages) {
           surveyJson.pages.forEach((page: any) => {
             if (page.elements) {
               page.elements.forEach((element: any) => {
                 // Handle panels (which contain elements)
-                if (element.type === 'panel' && element.elements) {
+                if (element.type === "panel" && element.elements) {
                   element.elements.forEach((subElement: any) => {
                     convertImageToFile(subElement);
                   });
@@ -283,10 +372,10 @@ export default function SurveyInstanceDetailPage() {
             }
           });
         }
-        
+
         const model = new Model(surveyJson);
         model.applyTheme(LayeredLight);
-        
+
         // Progress bar configuration
         model.showProgressBar = true;
         model.progressBarLocation = "top";
@@ -306,6 +395,15 @@ export default function SurveyInstanceDetailPage() {
         model.onComplete.add(handleSurveyComplete);
         // Attach meta-choice handler to inject embedded question-sets
         model.onValueChanged.add(handleMetaChoice as any);
+
+        // Snapshot model immediately after creation for debug
+        try {
+          const modelSnap = model.toJSON();
+          setDebugState((s: any) => ({ ...s, modelSnapshot: modelSnap, messages: [...s.messages, 'Created SurveyJS model snapshot'] }));
+          console.log('fetchInstance - model snapshot contains meta-contents?', JSON.stringify(modelSnap).includes('meta-contents'));
+        } catch (e) {
+          console.warn('fetchInstance - failed to snapshot model');
+        }
 
         surveyModelRef.current = model;
         setSurveyModel(model);
@@ -347,22 +445,33 @@ export default function SurveyInstanceDetailPage() {
 
       {instance && (
         <div style={{ marginBottom: "20px" }}>
-          <h1>{instance.TemplateName || 'Survey Instance'}</h1>
+          <h1>{instance.TemplateName || "Survey Instance"}</h1>
           {instance.AddressLine1 && (
             <p>
               {[
                 instance.AddressLine1,
                 instance.AddressLine2,
                 instance.Town,
-                instance.PostCode
-              ].filter(Boolean).join(', ')}
+                instance.PostCode,
+              ]
+                .filter(Boolean)
+                .join(", ")}
             </p>
           )}
         </div>
       )}
 
       {error && (
-        <div style={{ padding: "10px", backgroundColor: "#fee", border: "1px solid #f00", color: "#c00", marginBottom: "20px", borderRadius: "4px" }}>
+        <div
+          style={{
+            padding: "10px",
+            backgroundColor: "#fee",
+            border: "1px solid #f00",
+            color: "#c00",
+            marginBottom: "20px",
+            borderRadius: "4px",
+          }}
+        >
           {error}
         </div>
       )}
@@ -376,38 +485,75 @@ export default function SurveyInstanceDetailPage() {
           <Survey model={surveyModel} />
           <div style={{ marginTop: 12 }}>
             <button
-              style={{ padding: '8px 12px', borderRadius: 4, cursor: 'pointer' }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 4,
+                cursor: "pointer",
+              }}
               onClick={() => {
                 // refresh survey JSON snapshot for debug
-                const snapshot = surveyModelRef.current ? surveyModelRef.current.toJSON() : null;
-                setDebugState((s: any) => ({ ...s, surveyJson: snapshot, messages: [...s.messages, 'Debug snapshot refreshed'] }));
+                const snapshot = surveyModelRef.current
+                  ? surveyModelRef.current.toJSON()
+                  : null;
+                setDebugState((s: any) => ({
+                  ...s,
+                  surveyJson: snapshot,
+                  messages: [...s.messages, "Debug snapshot refreshed"],
+                }));
                 setShowDebugPanel((v) => !v);
               }}
             >
-              {showDebugPanel ? 'Hide Debug' : 'Show Debug'}
+              {showDebugPanel ? "Hide Debug" : "Show Debug"}
             </button>
           </div>
           {showDebugPanel && (
-            <div style={{ marginTop: 12, padding: 12, background: '#111', color: '#eee', borderRadius: 6, fontSize: 12, lineHeight: 1.4, maxHeight: '40vh', overflow: 'auto' }}>
-              <div style={{ marginBottom: 8 }}><strong>Debug Messages</strong></div>
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                background: "#111",
+                color: "#eee",
+                borderRadius: 6,
+                fontSize: 12,
+                lineHeight: 1.4,
+                maxHeight: "40vh",
+                overflow: "auto",
+              }}
+            >
               <div style={{ marginBottom: 8 }}>
-                {Array.isArray(debugState.messages) && debugState.messages.length > 0 ? (
+                <strong>Debug Messages</strong>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                {Array.isArray(debugState.messages) &&
+                debugState.messages.length > 0 ? (
                   <ul>
-                    {debugState.messages.map((m: any, i: number) => (<li key={i}>{m}</li>))}
+                    {debugState.messages.map((m: any, i: number) => (
+                      <li key={i}>{m}</li>
+                    ))}
                   </ul>
-                ) : (<div style={{ color: '#888' }}>No messages</div>)}
+                ) : (
+                  <div style={{ color: "#888" }}>No messages</div>
+                )}
               </div>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontWeight: 600 }}>Last Selected Choice</div>
-                <pre style={{ whiteSpace: 'pre-wrap', color: '#9cf' }}>{JSON.stringify(debugState.lastChoice, null, 2)}</pre>
+                <pre style={{ whiteSpace: "pre-wrap", color: "#9cf" }}>
+                  {JSON.stringify(debugState.lastChoice, null, 2)}
+                </pre>
               </div>
               <div>
                 <div style={{ fontWeight: 600 }}>Embedded Payload</div>
-                <pre style={{ whiteSpace: 'pre-wrap', color: '#9cf' }}>{JSON.stringify(debugState.embedded, null, 2)}</pre>
+                <pre style={{ whiteSpace: "pre-wrap", color: "#9cf" }}>
+                  {JSON.stringify(debugState.embedded, null, 2)}
+                </pre>
               </div>
               <div style={{ marginTop: 8 }}>
-                <div style={{ fontWeight: 600 }}>Survey Model JSON (snapshot)</div>
-                <pre style={{ whiteSpace: 'pre-wrap', color: '#9cf' }}>{JSON.stringify(debugState.surveyJson, null, 2)}</pre>
+                <div style={{ fontWeight: 600 }}>
+                  Survey Model JSON (snapshot)
+                </div>
+                <pre style={{ whiteSpace: "pre-wrap", color: "#9cf" }}>
+                  {JSON.stringify(debugState.surveyJson, null, 2)}
+                </pre>
               </div>
             </div>
           )}
