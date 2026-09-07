@@ -57,6 +57,7 @@ export default function SurveyInstanceDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [surveyModel, setSurveyModel] = useState<Model | null>(null);
   const surveyModelRef = useRef<Model | null>(null);
+  const originalSurveyJsonRef = useRef<any>(null);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [debugState, setDebugState] = useState<any>({
     messages: [],
@@ -91,7 +92,7 @@ export default function SurveyInstanceDetailPage() {
       }
       if (!choiceObj) return;
 
-      const embedded =
+      let embedded =
         choiceObj["meta-contents"] ||
         choiceObj.metaContents ||
         choiceObj.meta_contents ||
@@ -113,12 +114,65 @@ export default function SurveyInstanceDetailPage() {
         lastChoice: choiceObj,
         embedded,
       }));
-      if (!embedded) {
-        console.log(
-          "No embedded meta-contents found on choice, will attempt fallback fetch",
-        );
+
+      // If embedded not present on the runtime choice object, try to find it
+      // in the original DB SurveyJSON (stored in a ref) before falling back
+      // to network fetch.
+      if (!embedded && originalSurveyJsonRef.current) {
+        try {
+          const dbJson = originalSurveyJsonRef.current;
+          let found: any = null;
+          const pages = Array.isArray(dbJson.pages) ? dbJson.pages : [];
+          for (const p of pages) {
+            const els = Array.isArray(p.elements) ? p.elements : [];
+            for (const el of els) {
+              // direct element name match
+              if (el && el.name && String(el.name) === String(qName)) {
+                const dbChoices = Array.isArray(el.choices) ? el.choices : [];
+                for (const dc of dbChoices) {
+                  const v = dc && typeof dc === 'object' && 'value' in dc ? dc.value : dc;
+                  if (String(v) === String(selectedValue)) {
+                    found = dc;
+                    break;
+                  }
+                }
+                if (found) break;
+              }
+              // If panel, search its inner elements
+              if (el && el.type === 'panel' && Array.isArray(el.elements)) {
+                for (const subEl of el.elements) {
+                  if (subEl && subEl.name && String(subEl.name) === String(qName)) {
+                    const dbChoices = Array.isArray(subEl.choices) ? subEl.choices : [];
+                    for (const dc of dbChoices) {
+                      const v = dc && typeof dc === 'object' && 'value' in dc ? dc.value : dc;
+                      if (String(v) === String(selectedValue)) {
+                        found = dc;
+                        break;
+                      }
+                    }
+                    if (found) break;
+                  }
+                }
+                if (found) break;
+              }
+            }
+            if (found) break;
+          }
+          if (found) {
+            console.log('Found original choice in DB JSON', found);
+            setDebugState((s: any) => ({ ...s, messages: [...s.messages, 'Found original choice in DB JSON'], lastChoice: found }));
+            // If original has meta-contents, use that as embedded
+            const origEmbedded = found['meta-contents'] || found.metaContents || found.meta_contents || found.questionSet || found.questionSetJson || null;
+            if (origEmbedded) {
+              // override embedded and choiceObj with original
+              embedded = origEmbedded;
+              choiceObj = found;
+            }
+          }
+        } catch (e) {
+          console.warn('Error searching original SurveyJSON for choice metadata', e);
+        }
       }
-      if (!embedded) return;
 
       let elems: any[] = [];
       if (typeof embedded === "string") {
@@ -258,37 +312,69 @@ export default function SurveyInstanceDetailPage() {
           `Injecting ${elems.length} elements into page ${page.name || "<unnamed>"}`,
         ],
       }));
-      if (typeof page.addNewPanel === "function") {
-        newPanel = page.addNewPanel(panelName);
+
+      // If embedded is a single panel-like object (has elements), make that the root panel
+      const isPanelSpec = elems.length === 1 && elems[0] && Array.isArray(elems[0].elements);
+      if (isPanelSpec) {
+        const spec = elems[0];
+        const panelId = spec.name || panelName;
+        if (typeof page.addNewPanel === "function") newPanel = page.addNewPanel(panelId);
+        else if (!Array.isArray(page.elements)) page.elements = [];
+
+        if (newPanel) {
+          if (spec.title) newPanel.title = spec.title;
+          if (spec.description) newPanel.description = spec.description;
+          if (spec.name) newPanel.name = spec.name;
+        } else {
+          // page.elements fallback: push a panel-like raw object so it persists
+          page.elements.push({ type: "panel", name: panelId, title: spec.title, description: spec.description, elements: spec.elements });
+        }
+
+        const children = spec.elements || [];
+        children.forEach((el: any, idx: number) => {
+          const qType = String(el.type || el.questionType || "text");
+          const qNameLocal = String(el.name || el.fieldName || `meta_${panelId}_${idx}`);
+          let newQ: any = null;
+          if (newPanel && typeof newPanel.addNewQuestion === "function") newQ = newPanel.addNewQuestion(qType, qNameLocal);
+          else if (typeof page.addNewQuestion === "function") newQ = page.addNewQuestion(qType, qNameLocal);
+          if (!newQ) { if (Array.isArray(page.elements)) page.elements.push(el); return; }
+          newQ.title = el.title || el.surveyLabel || el.fieldName || qNameLocal;
+          newQ.isRequired = el.isRequired === true;
+          newQ.readOnly = el.readOnly === true || el.isReadOnly === true;
+          if (Array.isArray(el.choices)) newQ.choices = el.choices;
+          if (el.defaultValue !== undefined) newQ.defaultValue = el.defaultValue;
+        });
       } else {
-        // ensure elements array exists
-        if (!Array.isArray(page.elements)) page.elements = [];
+        if (typeof page.addNewPanel === "function") {
+          newPanel = page.addNewPanel(panelName);
+        } else {
+          // ensure elements array exists
+          if (!Array.isArray(page.elements)) page.elements = [];
+        }
+
+        elems.forEach((el: any, idx: number) => {
+          const qType = String(el.type || el.questionType || "text");
+          const qNameLocal = String(el.name || el.fieldName || `meta_${panelName}_${idx}`);
+          let newQ: any = null;
+          if (newPanel && typeof newPanel.addNewQuestion === "function") {
+            newQ = newPanel.addNewQuestion(qType, qNameLocal);
+          } else if (typeof page.addNewQuestion === "function") {
+            newQ = page.addNewQuestion(qType, qNameLocal);
+          }
+
+          if (!newQ) {
+            // fallback: push raw element to page.elements
+            page.elements.push(el);
+            return;
+          }
+
+          newQ.title = el.title || el.surveyLabel || el.fieldName || qNameLocal;
+          newQ.isRequired = el.isRequired === true;
+          newQ.readOnly = el.readOnly === true || el.isReadOnly === true;
+          if (Array.isArray(el.choices)) newQ.choices = el.choices;
+          if (el.defaultValue !== undefined) newQ.defaultValue = el.defaultValue;
+        });
       }
-
-      elems.forEach((el: any, idx: number) => {
-        const qType = String(el.type || el.questionType || "text");
-        const qNameLocal = String(
-          el.name || el.fieldName || `meta_${panelName}_${idx}`,
-        );
-        let newQ: any = null;
-        if (newPanel && typeof newPanel.addNewQuestion === "function") {
-          newQ = newPanel.addNewQuestion(qType, qNameLocal);
-        } else if (typeof page.addNewQuestion === "function") {
-          newQ = page.addNewQuestion(qType, qNameLocal);
-        }
-
-        if (!newQ) {
-          // fallback: push raw element to page.elements
-          page.elements.push(el);
-          return;
-        }
-
-        newQ.title = el.title || el.surveyLabel || el.fieldName || qNameLocal;
-        newQ.isRequired = el.isRequired === true;
-        newQ.readOnly = el.readOnly === true || el.isReadOnly === true;
-        if (Array.isArray(el.choices)) newQ.choices = el.choices;
-        if (el.defaultValue !== undefined) newQ.defaultValue = el.defaultValue;
-      });
 
       // hide the meta question
       try {
@@ -349,6 +435,7 @@ export default function SurveyInstanceDetailPage() {
         // Save original DB JSON for debug comparison
         try {
           setDebugState((s: any) => ({ ...s, originalSurveyJson: surveyJson, messages: [...s.messages, 'Loaded original SurveyJSON from DB'] }));
+          originalSurveyJsonRef.current = surveyJson;
           const containsMeta = JSON.stringify(surveyJson).includes('meta-contents');
           console.log('fetchInstance - original SurveyJSON contains meta-contents?', containsMeta);
         } catch (e) {
@@ -375,13 +462,14 @@ export default function SurveyInstanceDetailPage() {
 
         const model = new Model(surveyJson);
         model.applyTheme(LayeredLight);
-
         // Progress bar configuration
         model.showProgressBar = true;
         model.progressBarLocation = "top";
+
         model.progressBarType = "pages";
         model.progressBarShowPageNumbers = false;
         model.progressBarShowPageTitles = true;
+
 
         // Load completed data if exists, otherwise use data from surveyJson
         if (instanceData.CompletedJSON) {
@@ -398,6 +486,7 @@ export default function SurveyInstanceDetailPage() {
 
         // Snapshot model immediately after creation for debug
         try {
+
           const modelSnap = model.toJSON();
           setDebugState((s: any) => ({ ...s, modelSnapshot: modelSnap, messages: [...s.messages, 'Created SurveyJS model snapshot'] }));
           console.log('fetchInstance - model snapshot contains meta-contents?', JSON.stringify(modelSnap).includes('meta-contents'));
