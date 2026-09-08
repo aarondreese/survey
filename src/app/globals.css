@@ -24,3 +24,67 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Keep final-page survey navigation actions on one row when space allows. */
+.sd-body__navigation:has(.survey-add-questions-nav-action:not(.sv-action--hidden)) {
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.sd-body__navigation:has(.survey-add-questions-nav-action:not(.sv-action--hidden))
+  .sv-action {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.sd-body__navigation:has(.survey-add-questions-nav-action:not(.sv-action--hidden))
+  .sv-action
+  .sd-btn {
+  width: 100%;
+}
+
+.sd-body__navigation .survey-add-questions-nav-action {
+  --survey-add-questions-green: #16a34a;
+  --survey-add-questions-green-hover: #15803d;
+}
+
+.sd-body__navigation
+  .survey-add-questions-nav-action
+  .survey-add-questions-nav-button.sd-btn.sd-btn--action {
+  width: 100%;
+  text-align: center !important;
+  background-color: var(--survey-add-questions-green) !important;
+  border: 1px solid var(--survey-add-questions-green) !important;
+  color: #ffffff !important;
+  box-shadow: var(--sjs-shadow-small, 0px 1px 2px 0px rgba(0, 0, 0, 0.15)),
+    0 0 0 0px var(--survey-add-questions-green) !important;
+}
+
+.sd-body__navigation
+  .survey-add-questions-nav-action
+  .survey-add-questions-nav-button.sd-btn.sd-btn--action:hover {
+  background-color: var(--survey-add-questions-green-hover) !important;
+  border-color: var(--survey-add-questions-green-hover) !important;
+  color: #ffffff !important;
+}
+
+.sd-body__navigation
+  .survey-add-questions-nav-action
+  .survey-add-questions-nav-button.sd-btn.sd-btn--action:focus-visible {
+  box-shadow: var(--sjs-shadow-small-reset, 0px 0px 0px 0px rgba(0, 0, 0, 0.15)),
+    0 0 0 2px var(--survey-add-questions-green) !important;
+}
+
+@media (max-width: 900px) {
+  .sd-body__navigation:has(.survey-add-questions-nav-action:not(.sv-action--hidden)) {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+
+  .sd-body__navigation:has(.survey-add-questions-nav-action:not(.sv-action--hidden))
+    .sv-action {
+    width: 100%;
+    flex: 0 0 auto;
+  }
+}

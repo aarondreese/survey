@@ -12,8 +12,62 @@ import type { Address } from "@/types/database";
 interface SurveyJsonState {
   survey: {
     pages: unknown[];
+    surveyMeta?: {
+      generatedAt: string;
+      templateId: number;
+      assetId: number;
+      possibleQuestionSets: PossibleQuestionSetMetadata[];
+    };
   };
   data: Record<string, unknown>;
+}
+
+interface PossibleQuestionMetadata {
+  generatedName: string;
+  originalName: string;
+  fieldName: string;
+  title: string;
+  type: string;
+  isReadOnly: boolean;
+  isRequired: boolean;
+  choices: Array<{ value: unknown; text: string }>;
+  answer: {
+    currentValue: unknown;
+    defaultValue: unknown;
+  };
+}
+
+interface PossibleQuestionSetMetadata {
+  key: string;
+  title: string;
+  sourcePageId: number;
+  sourcePageName: string;
+  sourcePanelName: string | null;
+  sourcePageSplitIdentifier: string | null;
+  sourceTypeId: number | null;
+  sourceInstanceId: number | null;
+  sourceAttributeId: number | null;
+  questions: PossibleQuestionMetadata[];
+}
+
+interface TemplateQuestionSetQuestion {
+  fieldName: string;
+  attributeLabel?: string;
+  surveyLabel?: string;
+  displayType?: string;
+  choices?: string;
+  isRequired?: boolean;
+}
+
+interface TemplateQuestionSetItem {
+  questionType: "QuestionSet";
+  questionSetHeaderId: number;
+  questionSetHeader?: {
+    id: number;
+    name?: string;
+    sourceViewName?: string;
+  };
+  questions?: TemplateQuestionSetQuestion[];
 }
 
 export default function ScratchPage() {
@@ -106,6 +160,194 @@ export default function ScratchPage() {
     }
   };
 
+  const sanitizeFieldName = (value: unknown): string => {
+    const raw = String(value ?? "field")
+      .trim()
+      .replace(/[^a-zA-Z0-9_]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+    return raw.length > 0 ? raw : "field";
+  };
+
+  const mapDisplayTypeToSurveyType = (displayType?: string): string => {
+    const normalized = String(displayType || "").toLowerCase();
+
+    if (normalized.includes("date")) return "date";
+    if (normalized.includes("bool")) return "radiogroup";
+    if (normalized.includes("check")) return "checkbox";
+    if (normalized.includes("radio")) return "radiogroup";
+    if (
+      normalized.includes("dropdown") ||
+      normalized.includes("select") ||
+      normalized.includes("lookup")
+    ) {
+      return "dropdown";
+    }
+    if (normalized.includes("image")) return "file";
+
+    return "text";
+  };
+
+  const isChoiceType = (surveyType: string): boolean => {
+    return ["dropdown", "checkbox", "radiogroup", "tagbox"].includes(
+      surveyType,
+    );
+  };
+
+  const parseTemplateChoices = (
+    choices?: string,
+  ): Array<{ value: unknown; text: string }> => {
+    if (!choices || choices.trim().length === 0) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(choices) as unknown;
+
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => {
+            if (typeof item === "string") {
+              return { value: item, text: item };
+            }
+            if (typeof item === "object" && item !== null) {
+              const obj = item as Record<string, unknown>;
+              const value =
+                obj.value ?? obj.Value ?? obj.id ?? obj.Id ?? obj.text ?? obj.Text;
+              const text = String(
+                obj.text ?? obj.Text ?? obj.label ?? obj.Label ?? value ?? "",
+              );
+              return { value, text };
+            }
+            return null;
+          })
+          .filter(
+            (item): item is { value: unknown; text: string } => Boolean(item),
+          );
+      }
+    } catch {
+      // Fallback to delimited text parsing.
+    }
+
+    return choices
+      .split(/[|,;\n]/)
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .map((value) => ({ value, text: value }));
+  };
+
+  const parseSourceOptions = (
+    rawOptions: unknown,
+  ): Array<{ value: unknown; text: string }> => {
+    if (rawOptions === null || rawOptions === undefined) {
+      return [];
+    }
+
+    const toChoice = (
+      item: unknown,
+    ): { value: unknown; text: string } | null => {
+      if (typeof item === "string") {
+        return { value: item, text: item };
+      }
+      if (typeof item === "object" && item !== null) {
+        const obj = item as Record<string, unknown>;
+        const value =
+          obj.value ?? obj.Value ?? obj.id ?? obj.Id ?? obj.key ?? obj.Key;
+        const textCandidate =
+          obj.text ??
+          obj.Text ??
+          obj.label ??
+          obj.Label ??
+          obj.name ??
+          obj.Name ??
+          value;
+        return { value, text: String(textCandidate ?? "") };
+      }
+      return null;
+    };
+
+    if (Array.isArray(rawOptions)) {
+      return rawOptions
+        .map(toChoice)
+        .filter(
+          (item): item is { value: unknown; text: string } => Boolean(item),
+        );
+    }
+
+    if (typeof rawOptions === "string") {
+      const trimmed = rawOptions.trim();
+      if (!trimmed) {
+        return [];
+      }
+
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map(toChoice)
+            .filter(
+              (item): item is { value: unknown; text: string } => Boolean(item),
+            );
+        }
+      } catch {
+        // Continue with delimited text fallback.
+      }
+
+      return trimmed
+        .split(/[|,;\n]/)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+        .map((value) => ({ value, text: value }));
+    }
+
+    if (typeof rawOptions === "object" && rawOptions !== null) {
+      const obj = rawOptions as Record<string, unknown>;
+      const nested = obj.options ?? obj.choices;
+      if (Array.isArray(nested)) {
+        return nested
+          .map(toChoice)
+          .filter(
+            (item): item is { value: unknown; text: string } => Boolean(item),
+          );
+      }
+    }
+
+    return [];
+  };
+
+  const extractTypeId = (
+    page: {
+      ParsedJSON: any;
+      PageSplitIdentifier: string | null;
+    },
+    pageData: any,
+  ): number | null => {
+    const candidates = [
+      pageData?.typeID,
+      pageData?.typeId,
+      pageData?.instanceTypeID,
+      pageData?.instanceTypeId,
+      pageData?.attributeTypeID,
+      pageData?.attributeTypeId,
+      page?.ParsedJSON?.typeID,
+      page?.ParsedJSON?.typeId,
+    ];
+
+    for (const candidate of candidates) {
+      const parsed = Number(candidate);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+
+    const idFromIdentifier = Number(page.PageSplitIdentifier);
+    if (!Number.isNaN(idFromIdentifier)) {
+      return idFromIdentifier;
+    }
+
+    return null;
+  };
+
   // Helper function to process individual elements
   const processElement = (
     element: any,
@@ -117,6 +359,7 @@ export default function ScratchPage() {
   ) => {
     // Make element name unique.
     const originalName = element.name;
+    element.originalName = originalName;
     // If this element is for a meta-generated question-set and includes attributeTypeID,
     // and there is no instance yet, use the attributeTypeID naming convention so
     // the field is addressable by attribute type across instances.
@@ -305,7 +548,7 @@ export default function ScratchPage() {
             "handleSaveSurvey - excerpt:",
             JSON.stringify(surveyToSave).substring(0, 1000),
           );
-      } catch (e) {
+      } catch {
         console.warn(
           "handleSaveSurvey - failed to inspect surveyToSave for meta-contents",
         );
@@ -388,8 +631,68 @@ export default function ScratchPage() {
 
       const data = await response.json();
 
+      let templateQuestionSets: TemplateQuestionSetItem[] = [];
+      try {
+        const templateQuestionsResponse = await fetch(
+          `/api/surveys/${templateId}/questions`,
+        );
+        if (templateQuestionsResponse.ok) {
+          const templateQuestionsResult = await templateQuestionsResponse.json();
+          const templateItems = Array.isArray(templateQuestionsResult?.data)
+            ? templateQuestionsResult.data
+            : [];
+
+          templateQuestionSets = templateItems.filter(
+            (item: any): item is TemplateQuestionSetItem =>
+              item?.questionType === "QuestionSet" &&
+              typeof item?.questionSetHeaderId === "number",
+          );
+        }
+      } catch {
+        // Non-blocking: generated-derived possible sets will be used as fallback.
+      }
+
+      const sourceViewRecordsByName: Record<
+        string,
+        Record<string, unknown>[]
+      > = {};
+      const uniqueSourceViews = Array.from(
+        new Set(
+          templateQuestionSets
+            .map((item) => item.questionSetHeader?.sourceViewName)
+            .filter((name): name is string => Boolean(name && name.trim())),
+        ),
+      );
+
+      if (uniqueSourceViews.length > 0) {
+        await Promise.all(
+          uniqueSourceViews.map(async (viewName) => {
+            try {
+              const sourceViewResponse = await fetch(
+                `/api/database-data?viewName=${encodeURIComponent(viewName)}`,
+              );
+
+              if (!sourceViewResponse.ok) {
+                sourceViewRecordsByName[viewName] = [];
+                return;
+              }
+
+              const sourceViewResult = await sourceViewResponse.json();
+              sourceViewRecordsByName[viewName] = Array.isArray(
+                sourceViewResult?.records,
+              )
+                ? sourceViewResult.records
+                : [];
+            } catch {
+              sourceViewRecordsByName[viewName] = [];
+            }
+          }),
+        );
+      }
+
       // Build survey data object to hold all current values
       const surveyData: Record<string, any> = {};
+      const possibleQuestionSets: PossibleQuestionSetMetadata[] = [];
 
       // Parse all pages from API and normalise different JSON shapes
       const parsedPages = data.pages
@@ -430,12 +733,14 @@ export default function ScratchPage() {
             // Extract instance and attributeId - prefer API level, fallback to ParsedJSON
             const instanceId = page.InstanceID ?? pageData.instance;
             const attributeId = page.AttributeID ?? pageData.attributeId;
+            const typeId = attributeId ?? extractTypeId(page, pageData);
             const pageSplit = page.PageSplit;
             const pageSplitIdentifier = page.PageSplitIdentifier;
 
             return {
               rawPageId: page.ID,
               pageData,
+              typeId,
               instanceId,
               attributeId,
               pageSplit,
@@ -476,6 +781,7 @@ export default function ScratchPage() {
 
           group.forEach((p: any) => {
             const pageData = p.pageData;
+            const typeId = p.typeId;
             const instanceId = p.instanceId;
             const attributeId = p.attributeId;
 
@@ -489,7 +795,7 @@ export default function ScratchPage() {
 
             // Process elements
             if (pageData.elements) {
-              panel.elements = pageData.elements.map((element: any) => {
+              const processedElements = pageData.elements.map((element: any) => {
                 return processElement(
                   element,
                   instanceId,
@@ -498,6 +804,43 @@ export default function ScratchPage() {
                   assetId,
                   attributeId,
                 );
+              });
+
+              panel.elements = processedElements;
+
+              possibleQuestionSets.push({
+                key: `possible_${p.rawPageId}_${instanceId ?? "none"}_${attributeId ?? "none"}`,
+                title: pageData.title || pageData.name || identifier,
+                sourcePageId: p.rawPageId,
+                sourcePageName: surveyPage.name,
+                sourcePanelName: panel.name,
+                sourcePageSplitIdentifier: identifier,
+                sourceTypeId: typeId ?? null,
+                sourceInstanceId: instanceId ?? null,
+                sourceAttributeId: attributeId ?? null,
+                questions: processedElements.map((element: any) => ({
+                  generatedName: String(element.name || ""),
+                  originalName: String(element.originalName || element.name || ""),
+                  fieldName: String(
+                    element.fieldName || element.originalName || element.name || "",
+                  ),
+                  title: String(
+                    element.title || element.label || element.name || "Untitled question",
+                  ),
+                  type: String(element.type || "text"),
+                  isReadOnly: element.readOnly === true,
+                  isRequired: element.isRequired === true,
+                  choices: Array.isArray(element.choices)
+                    ? element.choices.map((choice: any) => ({
+                        value: choice?.value,
+                        text: String(choice?.text ?? choice?.value ?? ""),
+                      }))
+                    : [],
+                  answer: {
+                    currentValue: element.currentValue ?? null,
+                    defaultValue: element.defaultValue ?? null,
+                  },
+                })),
               });
             }
 
@@ -509,6 +852,7 @@ export default function ScratchPage() {
           // No identifier - each gets its own page
           group.forEach((p: any) => {
             const pageData = p.pageData;
+            const typeId = p.typeId;
             const instanceId = p.instanceId;
             const attributeId = p.attributeId;
 
@@ -528,7 +872,7 @@ export default function ScratchPage() {
 
             // Process elements
             if (pageData.elements) {
-              surveyPage.elements = pageData.elements.map((element: any) => {
+              const processedElements = pageData.elements.map((element: any) => {
                 return processElement(
                   element,
                   instanceId,
@@ -538,6 +882,43 @@ export default function ScratchPage() {
                   attributeId,
                 );
               });
+
+              surveyPage.elements = processedElements;
+
+              possibleQuestionSets.push({
+                key: `possible_${p.rawPageId}_${instanceId ?? "none"}_${attributeId ?? "none"}`,
+                title: pageData.title || pageData.name || "Page",
+                sourcePageId: p.rawPageId,
+                sourcePageName: surveyPage.name,
+                sourcePanelName: null,
+                sourcePageSplitIdentifier: identifier,
+                sourceTypeId: typeId ?? null,
+                sourceInstanceId: instanceId ?? null,
+                sourceAttributeId: attributeId ?? null,
+                questions: processedElements.map((element: any) => ({
+                  generatedName: String(element.name || ""),
+                  originalName: String(element.originalName || element.name || ""),
+                  fieldName: String(
+                    element.fieldName || element.originalName || element.name || "",
+                  ),
+                  title: String(
+                    element.title || element.label || element.name || "Untitled question",
+                  ),
+                  type: String(element.type || "text"),
+                  isReadOnly: element.readOnly === true,
+                  isRequired: element.isRequired === true,
+                  choices: Array.isArray(element.choices)
+                    ? element.choices.map((choice: any) => ({
+                        value: choice?.value,
+                        text: String(choice?.text ?? choice?.value ?? ""),
+                      }))
+                    : [],
+                  answer: {
+                    currentValue: element.currentValue ?? null,
+                    defaultValue: element.defaultValue ?? null,
+                  },
+                })),
+              });
             }
 
             surveyPages.push(surveyPage);
@@ -545,8 +926,179 @@ export default function ScratchPage() {
         }
       });
 
+      const generatedChoicesByTypeAndField = new Map<
+        string,
+        Array<{ value: unknown; text: string }>
+      >();
+
+      const sourceViewChoicesByTypeAndField = new Map<
+        string,
+        Array<{ value: unknown; text: string }>
+      >();
+
+      for (const templateSet of templateQuestionSets) {
+        const questionSetId = templateSet.questionSetHeaderId;
+        const sourceViewName = templateSet.questionSetHeader?.sourceViewName;
+        if (!sourceViewName) continue;
+
+        const viewRecords = sourceViewRecordsByName[sourceViewName] || [];
+        const templateQuestions = Array.isArray(templateSet.questions)
+          ? templateSet.questions
+          : [];
+
+        for (const templateQuestion of templateQuestions) {
+          const fieldName = sanitizeFieldName(templateQuestion.fieldName || "");
+          if (!fieldName) continue;
+
+          const matchingRecord = viewRecords.find((record) => {
+            const recordFieldName = sanitizeFieldName(
+              String(record.fieldName ?? record.FieldName ?? record.label ?? ""),
+            );
+            return recordFieldName.toLowerCase() === fieldName.toLowerCase();
+          });
+
+          if (!matchingRecord) continue;
+
+          const options =
+            matchingRecord.options ??
+            matchingRecord.Options ??
+            matchingRecord.choices ??
+            matchingRecord.Choices;
+
+          const parsedOptions = parseSourceOptions(options);
+          if (parsedOptions.length > 0) {
+            sourceViewChoicesByTypeAndField.set(
+              `${questionSetId}::${fieldName}`,
+              parsedOptions,
+            );
+          }
+        }
+      }
+
+      for (const generatedSet of possibleQuestionSets) {
+        const typeToken = String(
+          generatedSet.sourceTypeId ?? generatedSet.sourceAttributeId ?? "",
+        );
+
+        for (const generatedQuestion of generatedSet.questions) {
+          const fieldToken = sanitizeFieldName(
+            generatedQuestion.fieldName ||
+              generatedQuestion.originalName ||
+              generatedQuestion.generatedName,
+          );
+          const key = `${typeToken}::${fieldToken}`;
+
+          if (
+            Array.isArray(generatedQuestion.choices) &&
+            generatedQuestion.choices.length > 0 &&
+            !generatedChoicesByTypeAndField.has(key)
+          ) {
+            generatedChoicesByTypeAndField.set(key, generatedQuestion.choices);
+          }
+        }
+      }
+
+      const possibleQuestionSetsFromTemplate =
+        templateQuestionSets.length > 0
+          ? templateQuestionSets.map((item) => {
+              const questionSetId = item.questionSetHeaderId;
+              const questionSetQuestions = Array.isArray(item.questions)
+                ? item.questions
+                : [];
+
+              return {
+                key: `template_qs_${questionSetId}`,
+                title:
+                  item.questionSetHeader?.name || `Question Set ${questionSetId}`,
+                sourcePageId: 0,
+                sourcePageName: `template_questionset_${questionSetId}`,
+                sourcePanelName: null,
+                sourcePageSplitIdentifier: null,
+                sourceTypeId: questionSetId,
+                sourceInstanceId: null,
+                sourceAttributeId: questionSetId,
+                questions: questionSetQuestions.map((question, index) => {
+                  const fieldName = sanitizeFieldName(
+                    question.fieldName || `field_${index + 1}`,
+                  );
+                  const surveyType = mapDisplayTypeToSurveyType(
+                    question.displayType,
+                  );
+                  const templateChoices = parseTemplateChoices(question.choices);
+                  const sourceViewChoices = sourceViewChoicesByTypeAndField.get(
+                    `${questionSetId}::${fieldName}`,
+                  );
+                  const generatedChoices = generatedChoicesByTypeAndField.get(
+                    `${questionSetId}::${fieldName}`,
+                  );
+
+                  let resolvedChoices: Array<{ value: unknown; text: string }> =
+                    [];
+
+                  if (
+                    Array.isArray(sourceViewChoices) &&
+                    sourceViewChoices.length > 0
+                  ) {
+                    resolvedChoices = sourceViewChoices;
+                  }
+
+                  if (
+                    (!resolvedChoices || resolvedChoices.length === 0) &&
+                    Array.isArray(generatedChoices) &&
+                    generatedChoices.length > 0
+                  ) {
+                    resolvedChoices = generatedChoices;
+                  }
+
+                  if (
+                    (!resolvedChoices || resolvedChoices.length === 0) &&
+                    Array.isArray(templateChoices) &&
+                    templateChoices.length > 0
+                  ) {
+                    resolvedChoices = templateChoices;
+                  }
+
+                  if (
+                    (surveyType === "radiogroup" || surveyType === "checkbox") &&
+                    (!resolvedChoices || resolvedChoices.length === 0)
+                  ) {
+                    resolvedChoices = [
+                      { value: true, text: "Yes" },
+                      { value: false, text: "No" },
+                    ];
+                  }
+
+                  return {
+                    generatedName: `type_${questionSetId}_instance_na_${fieldName}`,
+                    originalName: fieldName,
+                    fieldName,
+                    title:
+                      question.surveyLabel ||
+                      question.attributeLabel ||
+                      question.fieldName ||
+                      `Question ${index + 1}`,
+                    type: surveyType,
+                    isReadOnly: false,
+                    isRequired: question.isRequired === true,
+                    choices: isChoiceType(surveyType) ? resolvedChoices : [],
+                    answer: {
+                      currentValue: null,
+                      defaultValue: null,
+                    },
+                  };
+                }),
+              } as PossibleQuestionSetMetadata;
+            })
+          : possibleQuestionSets;
+
       const fullSurvey = {
         pages: surveyPages,
+        surveyMeta: {
+          generatedAt: new Date().toISOString(),
+          templateId,
+          assetId,
+          possibleQuestionSets: possibleQuestionSetsFromTemplate,
+        },
       };
 
       setSurveyJson({ survey: fullSurvey, data: surveyData });
