@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/database';
+import { parseRowJsonFields, parseRecordsetJsonFields } from '@/lib/parseDbJson';
 import sql from 'mssql';
 
 // Increase body size limit for this route
@@ -137,23 +138,10 @@ export async function GET(request: NextRequest) {
       // Get specific survey instance
       const db = await getDatabase();
       const dbRequest = db.request();
-      dbRequest.input('ID', parseInt(id));
-      
-      const result = await dbRequest.query(
-        `SELECT 
-          si.*,
-          sth.Name as TemplateName,
-          a.AddressLine1,
-          a.AddressLine2,
-          a.Town,
-          a.County,
-          a.PostCode
-        FROM SurveyInstance si
-        LEFT JOIN SurveyTemplateHeader sth ON si.SurveyTemplateHeaderID = sth.ID
-        LEFT JOIN HMS.Property p ON si.EntityReference LIKE '%_' + CAST(p.ID AS VARCHAR) + '%'
-        LEFT JOIN HMS.Address a ON p.AddressID = a.ID
-        WHERE si.ID = @ID`
-      );
+      dbRequest.input('ID', sql.Int, parseInt(id));
+
+      // Execute stored procedure that returns the survey instance detail
+      const result = await dbRequest.execute('api.SurveyInstance_GetByID');
 
       if (result.recordset.length === 0) {
         return NextResponse.json(
@@ -162,37 +150,22 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      return NextResponse.json({
-        success: true,
-        data: result.recordset[0]
-      });
-    } else {
-      // Get all survey instances
-      const db = await getDatabase();
-      const result = await db.request().query(
-        `SELECT 
-          si.ID,
-          si.SurveyTemplateHeaderID,
-          si.EntityReference,
-          si.InstanceCreatedDate,
-          si.CompletedDate,
-          si.ReviewedDate,
-          si.ApprovedDate,
-          sth.Name as TemplateName,
-          a.AddressLine1,
-          a.AddressLine2,
-          a.Town,
-          a.PostCode
-        FROM SurveyInstance si
-        LEFT JOIN SurveyTemplateHeader sth ON si.SurveyTemplateHeaderID = sth.ID
-        LEFT JOIN HMS.Property p ON si.EntityReference LIKE '%_' + CAST(p.ID AS VARCHAR) + '%'
-        LEFT JOIN HMS.Address a ON p.AddressID = a.ID
-        ORDER BY si.InstanceCreatedDate DESC`
-      );
+      // Parse JSON string fields so the response contains real objects
+      const row = parseRowJsonFields(result.recordset[0] as any) as any;
 
       return NextResponse.json({
         success: true,
-        data: result.recordset
+        data: row,
+      });
+    } else {
+      // Get all survey instances via stored procedure
+      const db = await getDatabase();
+      const dbRequest = db.request();
+      const result = await dbRequest.execute('api.SurveyInstance_GetAll');
+
+      return NextResponse.json({
+        success: true,
+        data: parseRecordsetJsonFields(result.recordset as any),
       });
     }
 

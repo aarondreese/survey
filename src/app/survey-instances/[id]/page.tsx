@@ -48,6 +48,22 @@ function convertImageToFile(element: any) {
   }
 }
 
+// Compute a canonical element name.
+function computeElementName(rawName: any, fieldName: any, attributeTypeID: any, idx: number) {
+  try {
+    if (attributeTypeID !== undefined && attributeTypeID !== null) {
+      const suffix = String(fieldName || rawName || idx).replace(/\s+/g, '_');
+      return `attributeTypeID_${String(attributeTypeID)}_${suffix}`;
+    }
+    const candidate = String(rawName || fieldName || `meta_${idx}`);
+    const m = candidate.match(/^instance_\d+_(.+)$/);
+    if (m && m[1]) return m[1];
+    return candidate;
+  } catch {
+    return String(rawName || fieldName || `meta_${idx}`);
+  }
+}
+
 export default function SurveyInstanceDetailPage() {
   const params = useParams();
   const instanceId = params.id as string;
@@ -130,7 +146,10 @@ export default function SurveyInstanceDetailPage() {
               if (el && el.name && String(el.name) === String(qName)) {
                 const dbChoices = Array.isArray(el.choices) ? el.choices : [];
                 for (const dc of dbChoices) {
-                  const v = dc && typeof dc === 'object' && 'value' in dc ? dc.value : dc;
+                  const v =
+                    dc && typeof dc === "object" && "value" in dc
+                      ? dc.value
+                      : dc;
                   if (String(v) === String(selectedValue)) {
                     found = dc;
                     break;
@@ -139,12 +158,21 @@ export default function SurveyInstanceDetailPage() {
                 if (found) break;
               }
               // If panel, search its inner elements
-              if (el && el.type === 'panel' && Array.isArray(el.elements)) {
+              if (el && el.type === "panel" && Array.isArray(el.elements)) {
                 for (const subEl of el.elements) {
-                  if (subEl && subEl.name && String(subEl.name) === String(qName)) {
-                    const dbChoices = Array.isArray(subEl.choices) ? subEl.choices : [];
+                  if (
+                    subEl &&
+                    subEl.name &&
+                    String(subEl.name) === String(qName)
+                  ) {
+                    const dbChoices = Array.isArray(subEl.choices)
+                      ? subEl.choices
+                      : [];
                     for (const dc of dbChoices) {
-                      const v = dc && typeof dc === 'object' && 'value' in dc ? dc.value : dc;
+                      const v =
+                        dc && typeof dc === "object" && "value" in dc
+                          ? dc.value
+                          : dc;
                       if (String(v) === String(selectedValue)) {
                         found = dc;
                         break;
@@ -159,10 +187,20 @@ export default function SurveyInstanceDetailPage() {
             if (found) break;
           }
           if (found) {
-            console.log('Found original choice in DB JSON', found);
-            setDebugState((s: any) => ({ ...s, messages: [...s.messages, 'Found original choice in DB JSON'], lastChoice: found }));
+            console.log("Found original choice in DB JSON", found);
+            setDebugState((s: any) => ({
+              ...s,
+              messages: [...s.messages, "Found original choice in DB JSON"],
+              lastChoice: found,
+            }));
             // If original has meta-contents, use that as embedded
-            const origEmbedded = found['meta-contents'] || found.metaContents || found.meta_contents || found.questionSet || found.questionSetJson || null;
+            const origEmbedded =
+              found["meta-contents"] ||
+              found.metaContents ||
+              found.meta_contents ||
+              found.questionSet ||
+              found.questionSetJson ||
+              null;
             if (origEmbedded) {
               // override embedded and choiceObj with original
               embedded = origEmbedded;
@@ -170,7 +208,10 @@ export default function SurveyInstanceDetailPage() {
             }
           }
         } catch (e) {
-          console.warn('Error searching original SurveyJSON for choice metadata', e);
+          console.warn(
+            "Error searching original SurveyJSON for choice metadata",
+            e,
+          );
         }
       }
 
@@ -221,7 +262,7 @@ export default function SurveyInstanceDetailPage() {
                       : q.displayType
                         ? q.displayType
                         : "text",
-                  name: q.fieldName || `qs_${qsId}_q_${idx}`,
+                  name: computeElementName(q.name ?? q.fieldName, q.fieldName, q.attributeTypeID ?? q.attributeTypeId, idx),
                   title:
                     q.surveyLabel ||
                     q.attributeLabel ||
@@ -262,24 +303,53 @@ export default function SurveyInstanceDetailPage() {
                 if (typeof page.addNewPanel === "function")
                   newPanel = page.addNewPanel(panelName);
                 mappedElems.forEach((el: any, idx: number) => {
-                  const qType = String(el.type || "text");
-                  const qNameLocal = String(
-                    el.name || `meta_${panelName}_${idx}`,
-                  );
+                  const rawType = String(el.type || "text");
+                  let surveyType = rawType.toLowerCase();
+                  let inputType: string | undefined = undefined;
+                  if (surveyType === "number" || surveyType.includes("int") || surveyType === "integer" || surveyType === "numeric") { surveyType = "text"; inputType = "number"; }
+                  else if (surveyType === "date") { surveyType = "text"; inputType = "date"; }
+                  else if (surveyType === "textarea" || surveyType === "longtext" || surveyType === "maxtext") surveyType = "comment";
+                  else if (surveyType === "checkboxes" || surveyType === "checkbox") surveyType = "checkbox";
+                  else if (surveyType === "radiogroup" || surveyType === "radio") surveyType = "radiogroup";
+                  else if (surveyType === "dropdown" || surveyType === "select") surveyType = "dropdown";
+
+                  const qNameLocal = computeElementName(el.name, el.fieldName, el.attributeTypeID ?? el.attributeTypeId, idx);
                   let newQ: any = null;
-                  if (newPanel && typeof newPanel.addNewQuestion === "function")
-                    newQ = newPanel.addNewQuestion(qType, qNameLocal);
-                  else if (typeof page.addNewQuestion === "function")
-                    newQ = page.addNewQuestion(qType, qNameLocal);
+                  if (newPanel && typeof newPanel.addNewQuestion === "function") newQ = newPanel.addNewQuestion(surveyType, qNameLocal);
+                  else if (typeof page.addNewQuestion === "function") newQ = page.addNewQuestion(surveyType, qNameLocal);
+
                   if (!newQ) {
-                    page.elements.push(el);
+                    console.warn('Cannot create Question instance; skipping element', el);
+                    setDebugState((s: any) => ({ ...s, messages: [...s.messages, 'Skipped raw element injection'] }));
                     return;
                   }
-                  newQ.title = el.title;
+
+                  newQ.title = el.title || el.surveyLabel || el.fieldName || qNameLocal;
                   newQ.isRequired = el.isRequired === true;
-                  if (Array.isArray(el.choices)) newQ.choices = el.choices;
-                  if (el.defaultValue !== undefined)
-                    newQ.defaultValue = el.defaultValue;
+                  newQ.readOnly = el.readOnly === true || el.isReadOnly === true;
+                  if (inputType) newQ.inputType = inputType;
+
+                  if (Array.isArray(el.choices)) {
+                    const normalized = el.choices.map((c: any) => {
+                      if (c && typeof c === 'object') {
+                        const v = c.value !== undefined ? c.value : (c.Value !== undefined ? c.Value : c.value);
+                        const t = c.text !== undefined ? c.text : (c.Text !== undefined ? c.Text : String(v));
+                        return { ...c, value: v, text: t };
+                      }
+                      return { value: c, text: String(c) };
+                    });
+                    newQ.choices = normalized;
+                  }
+
+                  if (el.defaultValue !== undefined) newQ.defaultValue = el.defaultValue;
+                  // Preserve source metadata to allow transforming keys on save
+                  try {
+                    if (el.attributeTypeID !== undefined || el.attributeTypeId !== undefined) {
+                      newQ.attributeTypeID = el.attributeTypeID ?? el.attributeTypeId;
+                    }
+                    if (el.fieldName !== undefined) newQ.fieldName = el.fieldName;
+                    if (el.name !== undefined && !newQ.fieldName) newQ.fieldName = el.name;
+                  } catch {}
                 });
 
                 try {
@@ -314,11 +384,13 @@ export default function SurveyInstanceDetailPage() {
       }));
 
       // If embedded is a single panel-like object (has elements), make that the root panel
-      const isPanelSpec = elems.length === 1 && elems[0] && Array.isArray(elems[0].elements);
+      const isPanelSpec =
+        elems.length === 1 && elems[0] && Array.isArray(elems[0].elements);
       if (isPanelSpec) {
         const spec = elems[0];
         const panelId = spec.name || panelName;
-        if (typeof page.addNewPanel === "function") newPanel = page.addNewPanel(panelId);
+        if (typeof page.addNewPanel === "function")
+          newPanel = page.addNewPanel(panelId);
         else if (!Array.isArray(page.elements)) page.elements = [];
 
         if (newPanel) {
@@ -326,23 +398,58 @@ export default function SurveyInstanceDetailPage() {
           if (spec.description) newPanel.description = spec.description;
           if (spec.name) newPanel.name = spec.name;
         } else {
-          // page.elements fallback: push a panel-like raw object so it persists
-          page.elements.push({ type: "panel", name: panelId, title: spec.title, description: spec.description, elements: spec.elements });
+          // Cannot create a real Panel instance - log and skip injecting raw panel object
+          console.warn(
+            "Cannot create Panel instance on page; skipping raw panel injection",
+            { panelId, spec },
+          );
+          setDebugState((s: any) => ({
+            ...s,
+            messages: [...s.messages, `Skipped raw panel injection ${panelId}`],
+          }));
         }
 
-        const children = spec.elements || [];
-        children.forEach((el: any, idx: number) => {
-          const qType = String(el.type || el.questionType || "text");
-          const qNameLocal = String(el.name || el.fieldName || `meta_${panelId}_${idx}`);
+      const children = spec.elements || [];
+      children.forEach((el: any, idx: number) => {
+          const rawType = String(el.type || el.questionType || "text");
+          let surveyType = rawType.toLowerCase();
+          let inputType: string | undefined = undefined;
+          if (surveyType === 'number' || surveyType.includes('int') || surveyType === 'integer' || surveyType === 'numeric') { surveyType = 'text'; inputType = 'number'; }
+          else if (surveyType === 'date') { surveyType = 'text'; inputType = 'date'; }
+          else if (surveyType === 'textarea' || surveyType === 'longtext' || surveyType === 'maxtext') surveyType = 'comment';
+          else if (surveyType === 'checkboxes' || surveyType === 'checkbox') surveyType = 'checkbox';
+          else if (surveyType === 'radiogroup' || surveyType === 'radio') surveyType = 'radiogroup';
+          else if (surveyType === 'dropdown' || surveyType === 'select') surveyType = 'dropdown';
+
+          const qNameLocal = computeElementName(el.name, el.fieldName, el.attributeTypeID ?? el.attributeTypeId, idx);
           let newQ: any = null;
-          if (newPanel && typeof newPanel.addNewQuestion === "function") newQ = newPanel.addNewQuestion(qType, qNameLocal);
-          else if (typeof page.addNewQuestion === "function") newQ = page.addNewQuestion(qType, qNameLocal);
-          if (!newQ) { if (Array.isArray(page.elements)) page.elements.push(el); return; }
+          if (newPanel && typeof newPanel.addNewQuestion === "function") newQ = newPanel.addNewQuestion(surveyType, qNameLocal);
+          else if (typeof page.addNewQuestion === "function") newQ = page.addNewQuestion(surveyType, qNameLocal);
+          if (!newQ) { console.warn('Cannot create Question instance; skipping element', el); setDebugState((s: any) => ({ ...s, messages: [...s.messages, 'Skipped raw element injection'] })); return; }
           newQ.title = el.title || el.surveyLabel || el.fieldName || qNameLocal;
           newQ.isRequired = el.isRequired === true;
           newQ.readOnly = el.readOnly === true || el.isReadOnly === true;
-          if (Array.isArray(el.choices)) newQ.choices = el.choices;
+          if (inputType) newQ.inputType = inputType;
+          if (Array.isArray(el.choices)) {
+            const normalized = el.choices.map((c: any) => {
+              if (c && typeof c === 'object') {
+                const v = c.value !== undefined ? c.value : (c.Value !== undefined ? c.Value : c.value);
+                const t = c.text !== undefined ? c.text : (c.Text !== undefined ? c.Text : String(v));
+                return { ...c, value: v, text: t };
+              }
+              return { value: c, text: String(c) };
+            });
+            newQ.choices = normalized;
+          }
           if (el.defaultValue !== undefined) newQ.defaultValue = el.defaultValue;
+                  // Preserve source metadata to allow transforming keys on save
+                  try {
+                    if (el.attributeTypeID !== undefined || el.attributeTypeId !== undefined) {
+                      newQ.attributeTypeID = el.attributeTypeID ?? el.attributeTypeId;
+                    }
+                    if (el.fieldName !== undefined) newQ.fieldName = el.fieldName;
+                    if (el.name !== undefined && !newQ.fieldName) newQ.fieldName = el.name;
+                  } catch {}
         });
       } else {
         if (typeof page.addNewPanel === "function") {
@@ -353,26 +460,54 @@ export default function SurveyInstanceDetailPage() {
         }
 
         elems.forEach((el: any, idx: number) => {
-          const qType = String(el.type || el.questionType || "text");
-          const qNameLocal = String(el.name || el.fieldName || `meta_${panelName}_${idx}`);
+          const rawType = String(el.type || el.questionType || "text");
+          let surveyType = rawType.toLowerCase();
+          let inputType: string | undefined = undefined;
+          if (surveyType === 'number' || surveyType.includes('int') || surveyType === 'integer' || surveyType === 'numeric') { surveyType = 'text'; inputType = 'number'; }
+          else if (surveyType === 'date') { surveyType = 'text'; inputType = 'date'; }
+          else if (surveyType === 'textarea' || surveyType === 'longtext' || surveyType === 'maxtext') surveyType = 'comment';
+          else if (surveyType === 'checkboxes' || surveyType === 'checkbox') surveyType = 'checkbox';
+          else if (surveyType === 'radiogroup' || surveyType === 'radio') surveyType = 'radiogroup';
+          else if (surveyType === 'dropdown' || surveyType === 'select') surveyType = 'dropdown';
+
+          const qNameLocal = computeElementName(el.name, el.fieldName, el.attributeTypeID ?? el.attributeTypeId, idx);
           let newQ: any = null;
           if (newPanel && typeof newPanel.addNewQuestion === "function") {
-            newQ = newPanel.addNewQuestion(qType, qNameLocal);
+            newQ = newPanel.addNewQuestion(surveyType, qNameLocal);
           } else if (typeof page.addNewQuestion === "function") {
-            newQ = page.addNewQuestion(qType, qNameLocal);
+            newQ = page.addNewQuestion(surveyType, qNameLocal);
           }
 
           if (!newQ) {
-            // fallback: push raw element to page.elements
-            page.elements.push(el);
+            console.warn('Cannot create Question instance; skipping element', el);
+            setDebugState((s: any) => ({ ...s, messages: [...s.messages, 'Skipped raw element injection'] }));
             return;
           }
 
           newQ.title = el.title || el.surveyLabel || el.fieldName || qNameLocal;
           newQ.isRequired = el.isRequired === true;
           newQ.readOnly = el.readOnly === true || el.isReadOnly === true;
-          if (Array.isArray(el.choices)) newQ.choices = el.choices;
+          if (inputType) newQ.inputType = inputType;
+          if (Array.isArray(el.choices)) {
+            const normalized = el.choices.map((c: any) => {
+              if (c && typeof c === 'object') {
+                const v = c.value !== undefined ? c.value : (c.Value !== undefined ? c.Value : c.value);
+                const t = c.text !== undefined ? c.text : (c.Text !== undefined ? c.Text : String(v));
+                return { ...c, value: v, text: t };
+              }
+              return { value: c, text: String(c) };
+            });
+            newQ.choices = normalized;
+          }
           if (el.defaultValue !== undefined) newQ.defaultValue = el.defaultValue;
+          // Preserve source metadata to allow transforming keys on save
+          try {
+            if (el.attributeTypeID !== undefined || el.attributeTypeId !== undefined) {
+              newQ.attributeTypeID = el.attributeTypeID ?? el.attributeTypeId;
+            }
+            if (el.fieldName !== undefined) newQ.fieldName = el.fieldName;
+            if (el.name !== undefined && !newQ.fieldName) newQ.fieldName = el.name;
+          } catch {}
         });
       }
 
@@ -391,12 +526,53 @@ export default function SurveyInstanceDetailPage() {
   const handleSurveyComplete = useCallback(
     async (sender: Model) => {
       try {
+        // If this instance has no CompletedJSON (i.e. data was injected, not loaded from an existing instance)
+        // transform property names into attributeTypeID_{attributeTypeID}_{field} so the backend can create attribute types.
+        let completedJsonToSend: any = sender.data;
+        try {
+          const isExisting = Boolean(instance && instance.CompletedJSON);
+          if (!isExisting && surveyModelRef.current) {
+            const transformed: any = {};
+            const questions = (surveyModelRef.current.getAllQuestions ? surveyModelRef.current.getAllQuestions() : []);
+            for (const q of questions) {
+              try {
+                const name = q.name;
+                const rawValue = sender.data && Object.prototype.hasOwnProperty.call(sender.data, name) ? sender.data[name] : undefined;
+                // Determine attributeTypeID and field
+                const attributeTypeID = q.attributeTypeID ?? q.attributeTypeId ?? (typeof name === 'string' && name.startsWith('attributeTypeID_') ? name.split('_')[1] : undefined);
+                const field = q.fieldName ?? (() => {
+                  if (typeof name === 'string') {
+                    const m = name.match(/^attributeTypeID_\d+_(.+)$/);
+                    if (m && m[1]) return m[1];
+                    return name;
+                  }
+                  return name;
+                })();
+
+                if (attributeTypeID !== undefined && attributeTypeID !== null) {
+                  const key = `attributeTypeID_${String(attributeTypeID)}_${String(field)}`.replace(/\s+/g, '_');
+                  transformed[key] = rawValue;
+                } else {
+                  // No attributeTypeID available - preserve original key
+                  transformed[name] = rawValue;
+                }
+              } catch (e) {
+                // ignore per-question transform errors
+              }
+            }
+            completedJsonToSend = transformed;
+          }
+        } catch (e) {
+          console.warn('Failed to transform completed JSON keys:', e);
+          completedJsonToSend = sender.data;
+        }
+
         const response = await fetch("/api/survey-instance", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             id: instanceId,
-            completedJson: sender.data,
+            completedJson: completedJsonToSend,
             completedDate: new Date().toISOString(),
           }),
         });
@@ -431,19 +607,36 @@ export default function SurveyInstanceDetailPage() {
 
       // Parse and create survey model
       if (instanceData.SurveyJSON) {
-        const surveyJson = JSON.parse(instanceData.SurveyJSON);
+        let surveyJson: any = instanceData.SurveyJSON;
+        if (typeof surveyJson === 'string') {
+          try {
+            surveyJson = JSON.parse(surveyJson);
+          } catch (e) {
+            console.warn('fetchInstance - SurveyJSON string parse failed, using raw string', e);
+          }
+        }
         // Save original DB JSON for debug comparison
         try {
-          setDebugState((s: any) => ({ ...s, originalSurveyJson: surveyJson, messages: [...s.messages, 'Loaded original SurveyJSON from DB'] }));
+          setDebugState((s: any) => ({
+            ...s,
+            originalSurveyJson: surveyJson,
+            messages: [...s.messages, "Loaded original SurveyJSON from DB"],
+          }));
           originalSurveyJsonRef.current = surveyJson;
-          const containsMeta = JSON.stringify(surveyJson).includes('meta-contents');
-          console.log('fetchInstance - original SurveyJSON contains meta-contents?', containsMeta);
+          const containsMeta =
+            JSON.stringify(surveyJson).includes("meta-contents");
+          console.log(
+            "fetchInstance - original SurveyJSON contains meta-contents?",
+            containsMeta,
+          );
         } catch (e) {
-          console.warn('fetchInstance - failed to set debug originalSurveyJson');
+          console.warn(
+            "fetchInstance - failed to set debug originalSurveyJson",
+          );
         }
 
         // Convert image fields to file type with camera support
-        if (surveyJson.pages) {
+        if (surveyJson && surveyJson.pages) {
           surveyJson.pages.forEach((page: any) => {
             if (page.elements) {
               page.elements.forEach((element: any) => {
@@ -470,11 +663,21 @@ export default function SurveyInstanceDetailPage() {
         model.progressBarShowPageNumbers = false;
         model.progressBarShowPageTitles = true;
 
-
         // Load completed data if exists, otherwise use data from surveyJson
         if (instanceData.CompletedJSON) {
-          const completedData = JSON.parse(instanceData.CompletedJSON);
-          model.data = completedData;
+          let completedData: any = instanceData.CompletedJSON;
+          if (typeof completedData === 'string') {
+            try {
+              completedData = JSON.parse(completedData);
+            } catch (e) {
+              console.warn('fetchInstance - CompletedJSON string parse failed, using raw value', e);
+            }
+          }
+          if (completedData && typeof completedData === 'object') {
+            model.data = completedData;
+          } else if (surveyJson.data) {
+            model.data = surveyJson.data;
+          }
         } else if (surveyJson.data) {
           model.data = surveyJson.data;
         }
@@ -484,14 +687,88 @@ export default function SurveyInstanceDetailPage() {
         // Attach meta-choice handler to inject embedded question-sets
         model.onValueChanged.add(handleMetaChoice as any);
 
+        // If this is a completed survey and meta-questions were answered,
+        // programmatically inject their question-sets so the page shows the injected details
+        try {
+          // Auto-inject meta question-sets for any answered meta questions
+          const data = model.data || {};
+          const questions = model.getAllQuestions ? model.getAllQuestions() : [];
+
+          // Keep a copy of original data so we can remap values into injected question names
+          const originalData = { ...data };
+
+          for (const q of questions) {
+            try {
+              const qName = q && q.name;
+              if (!qName) continue;
+              const val = originalData && Object.prototype.hasOwnProperty.call(originalData, qName) ? originalData[qName] : undefined;
+              if (val === undefined || val === null || val === '') continue;
+              const hasChoices = Array.isArray(q.choices) && q.choices.length > 0;
+              if (!hasChoices) continue;
+              // Inject the question-set for this meta choice
+              await (async () => handleMetaChoice(model, { name: qName, value: val }))();
+            } catch (e) {
+              // ignore per-question injection errors
+            }
+          }
+
+          // After injection, remap original completed values into injected question names
+          try {
+            const allQuestionsAfter = model.getAllQuestions ? model.getAllQuestions() : [];
+            const newData: any = { ...originalData };
+            for (const q of allQuestionsAfter) {
+              try {
+                const qName = q && q.name;
+                if (!qName) continue;
+                // If this question has a declared fieldName (preserved from source), prefer that as original key
+                const originalKeyCandidates: string[] = [];
+                if (q.fieldName) originalKeyCandidates.push(q.fieldName);
+                // Also consider the element's raw name without attributeTypeID prefix
+                if (typeof qName === 'string') {
+                  const m = qName.match(/^attributeTypeID_\d+_(.+)$/);
+                  if (m && m[1]) originalKeyCandidates.push(m[1]);
+                }
+                // Finally, add the qName itself as a fallback
+                originalKeyCandidates.push(qName);
+
+                for (const candidate of originalKeyCandidates) {
+                  if (candidate && Object.prototype.hasOwnProperty.call(originalData, candidate) && !Object.prototype.hasOwnProperty.call(newData, qName)) {
+                    newData[qName] = originalData[candidate];
+                    break;
+                  }
+                }
+              } catch {}
+            }
+            // Assign remapped data back to model
+            try {
+              model.data = newData;
+            } catch (e) {
+              // fallback: replace values one by one
+              for (const k of Object.keys(newData)) {
+                try { model.setValue && model.setValue(k, newData[k]); } catch {}
+              }
+            }
+          } catch (e) {
+            console.warn('fetchInstance - failed to remap completed data into injected questions', e);
+          }
+        } catch (e) {
+          console.warn('fetchInstance - failed to auto-inject meta question-sets for completed survey', e);
+        }
+
         // Snapshot model immediately after creation for debug
         try {
-
           const modelSnap = model.toJSON();
-          setDebugState((s: any) => ({ ...s, modelSnapshot: modelSnap, messages: [...s.messages, 'Created SurveyJS model snapshot'] }));
-          console.log('fetchInstance - model snapshot contains meta-contents?', JSON.stringify(modelSnap).includes('meta-contents'));
+          setDebugState((s: any) => ({
+            ...s,
+            modelSnapshot: modelSnap,
+            messages: [...s.messages, "Created SurveyJS model snapshot"],
+          }));
+          console.log(
+            "fetchInstance - model snapshot contains meta-contents?",
+            JSON.stringify(modelSnap).includes("meta-contents"),
+          );
         } catch (e) {
-          console.warn('fetchInstance - failed to snapshot model');
+          console.warn("fetchInstance - failed to snapshot model");
         }
 
         surveyModelRef.current = model;
