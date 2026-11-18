@@ -213,7 +213,12 @@ export default function ScratchPage() {
             if (typeof item === "object" && item !== null) {
               const obj = item as Record<string, unknown>;
               const value =
-                obj.value ?? obj.Value ?? obj.id ?? obj.Id ?? obj.text ?? obj.Text;
+                obj.value ??
+                obj.Value ??
+                obj.id ??
+                obj.Id ??
+                obj.text ??
+                obj.Text;
               const text = String(
                 obj.text ?? obj.Text ?? obj.label ?? obj.Label ?? value ?? "",
               );
@@ -221,8 +226,8 @@ export default function ScratchPage() {
             }
             return null;
           })
-          .filter(
-            (item): item is { value: unknown; text: string } => Boolean(item),
+          .filter((item): item is { value: unknown; text: string } =>
+            Boolean(item),
           );
       }
     } catch {
@@ -269,8 +274,8 @@ export default function ScratchPage() {
     if (Array.isArray(rawOptions)) {
       return rawOptions
         .map(toChoice)
-        .filter(
-          (item): item is { value: unknown; text: string } => Boolean(item),
+        .filter((item): item is { value: unknown; text: string } =>
+          Boolean(item),
         );
     }
 
@@ -285,8 +290,8 @@ export default function ScratchPage() {
         if (Array.isArray(parsed)) {
           return parsed
             .map(toChoice)
-            .filter(
-              (item): item is { value: unknown; text: string } => Boolean(item),
+            .filter((item): item is { value: unknown; text: string } =>
+              Boolean(item),
             );
         }
       } catch {
@@ -306,8 +311,8 @@ export default function ScratchPage() {
       if (Array.isArray(nested)) {
         return nested
           .map(toChoice)
-          .filter(
-            (item): item is { value: unknown; text: string } => Boolean(item),
+          .filter((item): item is { value: unknown; text: string } =>
+            Boolean(item),
           );
       }
     }
@@ -364,10 +369,13 @@ export default function ScratchPage() {
     // and there is no instance yet, use the attributeTypeID naming convention so
     // the field is addressable by attribute type across instances.
     if (
-      (element.attributeTypeID !== undefined && element.attributeTypeID !== null) &&
+      element.attributeTypeID !== undefined &&
+      element.attributeTypeID !== null &&
       (instanceId === undefined || instanceId === null)
     ) {
-      const suffix = String(element.fieldName || originalName || rawPageId).replace(/\s+/g, "_");
+      const suffix = String(
+        element.fieldName || originalName || rawPageId,
+      ).replace(/\s+/g, "_");
       element.name = `attributeTypeID_${String(element.attributeTypeID)}_${suffix}`;
     } else if (instanceId !== undefined && instanceId !== null) {
       element.name = `instance_${instanceId}_${originalName}`;
@@ -637,7 +645,8 @@ export default function ScratchPage() {
           `/api/surveys/${templateId}/questions`,
         );
         if (templateQuestionsResponse.ok) {
-          const templateQuestionsResult = await templateQuestionsResponse.json();
+          const templateQuestionsResult =
+            await templateQuestionsResponse.json();
           const templateItems = Array.isArray(templateQuestionsResult?.data)
             ? templateQuestionsResult.data
             : [];
@@ -652,10 +661,8 @@ export default function ScratchPage() {
         // Non-blocking: generated-derived possible sets will be used as fallback.
       }
 
-      const sourceViewRecordsByName: Record<
-        string,
-        Record<string, unknown>[]
-      > = {};
+      const sourceViewRecordsByName: Record<string, Record<string, unknown>[]> =
+        {};
       const uniqueSourceViews = Array.from(
         new Set(
           templateQuestionSets
@@ -795,16 +802,18 @@ export default function ScratchPage() {
 
             // Process elements
             if (pageData.elements) {
-              const processedElements = pageData.elements.map((element: any) => {
-                return processElement(
-                  element,
-                  instanceId,
-                  p.rawPageId,
-                  surveyData,
-                  assetId,
-                  attributeId,
-                );
-              });
+              const processedElements = pageData.elements.map(
+                (element: any) => {
+                  return processElement(
+                    element,
+                    instanceId,
+                    p.rawPageId,
+                    surveyData,
+                    assetId,
+                    attributeId,
+                  );
+                },
+              );
 
               panel.elements = processedElements;
 
@@ -820,12 +829,20 @@ export default function ScratchPage() {
                 sourceAttributeId: attributeId ?? null,
                 questions: processedElements.map((element: any) => ({
                   generatedName: String(element.name || ""),
-                  originalName: String(element.originalName || element.name || ""),
+                  originalName: String(
+                    element.originalName || element.name || "",
+                  ),
                   fieldName: String(
-                    element.fieldName || element.originalName || element.name || "",
+                    element.fieldName ||
+                      element.originalName ||
+                      element.name ||
+                      "",
                   ),
                   title: String(
-                    element.title || element.label || element.name || "Untitled question",
+                    element.title ||
+                      element.label ||
+                      element.name ||
+                      "Untitled question",
                   ),
                   type: String(element.type || "text"),
                   isReadOnly: element.readOnly === true,
@@ -872,16 +889,18 @@ export default function ScratchPage() {
 
             // Process elements
             if (pageData.elements) {
-              const processedElements = pageData.elements.map((element: any) => {
-                return processElement(
-                  element,
-                  instanceId,
-                  p.rawPageId,
-                  surveyData,
-                  assetId,
-                  attributeId,
-                );
-              });
+              const processedElements = pageData.elements.map(
+                (element: any) => {
+                  return processElement(
+                    element,
+                    instanceId,
+                    p.rawPageId,
+                    surveyData,
+                    assetId,
+                    attributeId,
+                  );
+                },
+              );
 
               surveyPage.elements = processedElements;
 
@@ -897,12 +916,20 @@ export default function ScratchPage() {
                 sourceAttributeId: attributeId ?? null,
                 questions: processedElements.map((element: any) => ({
                   generatedName: String(element.name || ""),
-                  originalName: String(element.originalName || element.name || ""),
+                  originalName: String(
+                    element.originalName || element.name || "",
+                  ),
                   fieldName: String(
-                    element.fieldName || element.originalName || element.name || "",
+                    element.fieldName ||
+                      element.originalName ||
+                      element.name ||
+                      "",
                   ),
                   title: String(
-                    element.title || element.label || element.name || "Untitled question",
+                    element.title ||
+                      element.label ||
+                      element.name ||
+                      "Untitled question",
                   ),
                   type: String(element.type || "text"),
                   isReadOnly: element.readOnly === true,
@@ -952,7 +979,9 @@ export default function ScratchPage() {
 
           const matchingRecord = viewRecords.find((record) => {
             const recordFieldName = sanitizeFieldName(
-              String(record.fieldName ?? record.FieldName ?? record.label ?? ""),
+              String(
+                record.fieldName ?? record.FieldName ?? record.label ?? "",
+              ),
             );
             return recordFieldName.toLowerCase() === fieldName.toLowerCase();
           });
@@ -1009,7 +1038,8 @@ export default function ScratchPage() {
               return {
                 key: `template_qs_${questionSetId}`,
                 title:
-                  item.questionSetHeader?.name || `Question Set ${questionSetId}`,
+                  item.questionSetHeader?.name ||
+                  `Question Set ${questionSetId}`,
                 sourcePageId: 0,
                 sourcePageName: `template_questionset_${questionSetId}`,
                 sourcePanelName: null,
@@ -1024,7 +1054,9 @@ export default function ScratchPage() {
                   const surveyType = mapDisplayTypeToSurveyType(
                     question.displayType,
                   );
-                  const templateChoices = parseTemplateChoices(question.choices);
+                  const templateChoices = parseTemplateChoices(
+                    question.choices,
+                  );
                   const sourceViewChoices = sourceViewChoicesByTypeAndField.get(
                     `${questionSetId}::${fieldName}`,
                   );
@@ -1059,7 +1091,8 @@ export default function ScratchPage() {
                   }
 
                   if (
-                    (surveyType === "radiogroup" || surveyType === "checkbox") &&
+                    (surveyType === "radiogroup" ||
+                      surveyType === "checkbox") &&
                     (!resolvedChoices || resolvedChoices.length === 0)
                   ) {
                     resolvedChoices = [

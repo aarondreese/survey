@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { useParams } from "next/navigation";
 import HomeButton from "@/components/HomeButton";
 import { Survey } from "survey-react-ui";
@@ -137,7 +143,10 @@ function convertImageToFile(element: any) {
 
 function normalizeElementForSurvey(
   element: any,
-  options?: { forceMetaDropdownToRadio?: boolean; forceAllDropdownToRadio?: boolean },
+  options?: {
+    forceMetaDropdownToRadio?: boolean;
+    forceAllDropdownToRadio?: boolean;
+  },
 ) {
   const rawType = String(element?.type || "text").toLowerCase();
   const hasMetaContentsChoices = Array.isArray(element?.choices)
@@ -145,7 +154,9 @@ function normalizeElementForSurvey(
         (choice: any) =>
           choice &&
           typeof choice === "object" &&
-          (choice["meta-contents"] || choice.metaContents || choice.meta_contents),
+          (choice["meta-contents"] ||
+            choice.metaContents ||
+            choice.meta_contents),
       )
     : false;
 
@@ -218,7 +229,11 @@ class SurveyRenderBoundary extends React.Component<
   },
   { hasError: boolean }
 > {
-  constructor(props: { resetKey: number; onError: (error: Error) => void; children: React.ReactNode }) {
+  constructor(props: {
+    resetKey: number;
+    onError: (error: Error) => void;
+    children: React.ReactNode;
+  }) {
     super(props);
     this.state = { hasError: false };
   }
@@ -371,9 +386,7 @@ export default function SurveyInstanceDetailPage() {
           (element as { name?: string }).name !== FINAL_ACTIONS_CONFIRM_NAME,
       );
 
-      existingFinalPage.elements = [
-        ...withoutPicker,
-      ];
+      existingFinalPage.elements = [...withoutPicker];
 
       if (existingFinalIndex !== modelJson.pages.length - 1) {
         const [finalPage] = modelJson.pages.splice(existingFinalIndex, 1);
@@ -436,14 +449,19 @@ export default function SurveyInstanceDetailPage() {
       questionSet: PossibleQuestionSetMetadata,
       metadata: AddedQuestionSetMetadata,
     ) => {
-      const finalActionsPage = activeModel.getPageByName(FINAL_ACTIONS_PAGE_NAME) as unknown as
+      const finalActionsPage = activeModel.getPageByName(
+        FINAL_ACTIONS_PAGE_NAME,
+      ) as unknown as
         | (Record<string, unknown> & {
             elements?: Array<Record<string, unknown>>;
             addNewPanel?: (name: string, index?: number) => any;
           })
         | null;
 
-      if (!finalActionsPage || typeof finalActionsPage.addNewPanel !== "function") {
+      if (
+        !finalActionsPage ||
+        typeof finalActionsPage.addNewPanel !== "function"
+      ) {
         throw new Error("Final actions page is missing");
       }
 
@@ -481,9 +499,13 @@ export default function SurveyInstanceDetailPage() {
           name === FINAL_ACTIONS_CONFIRM_NAME
         );
       });
-      const insertAtIndex = legacyControlIndex >= 0 ? legacyControlIndex : undefined;
+      const insertAtIndex =
+        legacyControlIndex >= 0 ? legacyControlIndex : undefined;
 
-      const newPanel = finalActionsPage.addNewPanel(metadata.panelName, insertAtIndex);
+      const newPanel = finalActionsPage.addNewPanel(
+        metadata.panelName,
+        insertAtIndex,
+      );
 
       if (!newPanel) {
         throw new Error("Failed to create added panel");
@@ -525,7 +547,9 @@ export default function SurveyInstanceDetailPage() {
         };
 
         const questionType = String(elementJson.type || "text");
-        const questionName = String(elementJson.name || `added_question_${index}`);
+        const questionName = String(
+          elementJson.name || `added_question_${index}`,
+        );
         const newQuestion = newPanel.addNewQuestion(questionType, questionName);
 
         if (!newQuestion) return;
@@ -535,7 +559,8 @@ export default function SurveyInstanceDetailPage() {
         newQuestion.readOnly = false;
         (newQuestion as any).fieldName = elementJson.fieldName;
         (newQuestion as any).originalName = elementJson.originalName;
-        (newQuestion as any).sourceGeneratedName = elementJson.sourceGeneratedName;
+        (newQuestion as any).sourceGeneratedName =
+          elementJson.sourceGeneratedName;
         (newQuestion as any).addedQuestionSetUid = metadata.uid;
 
         if (Array.isArray(elementJson.choices)) {
@@ -584,7 +609,10 @@ export default function SurveyInstanceDetailPage() {
           "na",
         );
         const instanceToken = "na";
-        const uniqueSuffix = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+        const uniqueSuffix =
+          typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
+            ? (crypto as any).randomUUID()
+            : `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
         const panelAssetToken = extractAssetIdToken(instance?.EntityReference);
         const panelName = `${USER_ADDED_PANEL_PREFIX}${panelAssetToken}_${sanitizeToken(questionSet.key)}_${uniqueSuffix}`;
 
@@ -598,7 +626,11 @@ export default function SurveyInstanceDetailPage() {
           addedAt: new Date().toISOString(),
         };
 
-        injectAddedQuestionSetIntoFinalPage(activeModel, questionSet, addedMetadata);
+        injectAddedQuestionSetIntoFinalPage(
+          activeModel,
+          questionSet,
+          addedMetadata,
+        );
 
         surveyModelRef.current = activeModel;
         setSurveyModel(activeModel);
@@ -773,7 +805,9 @@ export default function SurveyInstanceDetailPage() {
         // No embedded payload. Prefer local metadata and do not call API endpoints.
         const selectedToken = String(selectedValue);
         const matchedSet = possibleQuestionSetsRef.current.find((set) => {
-          const typeToken = String(set.sourceTypeId ?? set.sourceAttributeId ?? "");
+          const typeToken = String(
+            set.sourceTypeId ?? set.sourceAttributeId ?? "",
+          );
           return (
             set.key === `template_qs_${selectedToken}` ||
             typeToken === selectedToken
@@ -847,10 +881,31 @@ export default function SurveyInstanceDetailPage() {
           newPanel = page.addNewPanel(panelId);
         else if (!Array.isArray(page.elements)) page.elements = [];
 
+        let injectedUid: string | undefined = undefined;
+
         if (newPanel) {
           if (spec.title) newPanel.title = spec.title;
           if (spec.description) newPanel.description = spec.description;
           if (spec.name) newPanel.name = spec.name;
+          // Mark injected panel with a stable uid for tracking
+          try {
+            injectedUid =
+              typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
+                ? (crypto as any).randomUUID()
+                : panelId;
+            (newPanel as any).addedQuestionSetUid = injectedUid;
+            (newPanel as any).isUserAddedQuestionSet = true;
+            const metaEntry: AddedQuestionSetMetadata = {
+              key: `meta_injected_${injectedUid ?? panelId}`,
+              title: spec.title || "Injected",
+              uid: injectedUid ?? panelId,
+              panelName: panelId,
+              typeToken: "meta",
+              instanceToken: "na",
+              addedAt: new Date().toISOString(),
+            };
+            setAddedQuestionSets((prev) => [...prev, metaEntry]);
+          } catch {}
         } else {
           // Cannot create a real Panel instance - log and skip injecting raw panel object
           console.warn(
@@ -953,14 +1008,41 @@ export default function SurveyInstanceDetailPage() {
             if (el.name !== undefined && !newQ.fieldName)
               newQ.fieldName = el.name;
           } catch {}
+          // ensure injected questions have a stable uid linking them to their source panel
+          try {
+            if (injectedUid) (newQ as any).addedQuestionSetUid = injectedUid;
+          } catch {}
         });
       } else {
+        let injectedUidNonPanel: string | undefined = undefined;
         if (typeof page.addNewPanel === "function") {
           newPanel = page.addNewPanel(panelName);
         } else {
           // ensure elements array exists
           if (!Array.isArray(page.elements)) page.elements = [];
         }
+
+        // Mark injected panel with UID and add to tracking list
+        try {
+          injectedUidNonPanel =
+            typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
+              ? (crypto as any).randomUUID()
+              : panelName;
+          if (newPanel) {
+            (newPanel as any).addedQuestionSetUid = injectedUidNonPanel;
+            (newPanel as any).isUserAddedQuestionSet = true;
+          }
+          const metaEntry: AddedQuestionSetMetadata = {
+            key: `meta_injected_${injectedUidNonPanel ?? panelName}`,
+            title: `Injected`,
+            uid: injectedUidNonPanel ?? panelName,
+            panelName,
+            typeToken: "meta",
+            instanceToken: "na",
+            addedAt: new Date().toISOString(),
+          };
+          setAddedQuestionSets((prev) => [...prev, metaEntry]);
+        } catch {}
 
         elems.forEach((el: any, idx: number) => {
           const rawType = String(el.type || el.questionType || "text");
@@ -1054,6 +1136,9 @@ export default function SurveyInstanceDetailPage() {
             if (el.name !== undefined && !newQ.fieldName)
               newQ.fieldName = el.name;
           } catch {}
+          try {
+            if (injectedUidNonPanel) (newQ as any).addedQuestionSetUid = injectedUidNonPanel;
+          } catch {}
         });
       }
 
@@ -1133,14 +1218,79 @@ export default function SurveyInstanceDetailPage() {
           completedJsonToSend = sender.data;
         }
 
-        const completedPayload: Record<string, any> =
-          completedJsonToSend && typeof completedJsonToSend === "object"
-            ? { ...completedJsonToSend }
-            : { value: completedJsonToSend };
+        // Build CompletedJSON v1: snapshot + additions
+        const modelForSnapshot = surveyModelRef.current || sender;
+        let snapshot: any = null;
+        try {
+          snapshot = modelForSnapshot.toJSON();
+        } catch {
+          try {
+            snapshot = sender.toJSON();
+          } catch {
+            snapshot = completedJsonToSend;
+          }
+        }
+        // Ensure snapshot includes the current answers/data
+        try {
+          snapshot.data = modelForSnapshot?.data ?? sender?.data ?? snapshot.data;
+        } catch {}
 
-        completedPayload.__surveyMeta = {
-          addedQuestionSets: addedQuestionSetsRef.current,
-          possibleQuestionSetCount: possibleQuestionSetCountRef.current,
+        // Map added question sets into additions with answers captured
+        const additions: any[] = [];
+        try {
+          const addedMeta = Array.isArray(addedQuestionSetsRef.current)
+            ? addedQuestionSetsRef.current
+            : [];
+          const allQuestions = (modelForSnapshot.getAllQuestions
+            ? modelForSnapshot.getAllQuestions()
+            : []) || [];
+
+          for (const m of addedMeta) {
+            const uuid = String(m.uid || m.key || `${Date.now()}`);
+            const questionSetHeaderId =
+              m.typeToken && /^\d+$/.test(String(m.typeToken))
+                ? parseInt(String(m.typeToken), 10)
+                : undefined;
+            const origin = m.typeToken === "meta" ? "meta" : "manual";
+            const insertAt = { pageId: undefined, panelName: m.panelName, index: undefined };
+
+            const answers: Record<string, any> = {};
+            try {
+              for (const q of allQuestions) {
+                try {
+                  const qUid = (q as any).addedQuestionSetUid || (q as any).addedQuestionSetUid;
+                  if (!qUid) continue;
+                  if (String(qUid) !== String(uuid)) continue;
+                  const qName = q && q.name;
+                  if (!qName) continue;
+                  const val = sender.data && Object.prototype.hasOwnProperty.call(sender.data, qName)
+                    ? sender.data[qName]
+                    : undefined;
+                  answers[qName] = val;
+                } catch {}
+              }
+            } catch {}
+
+            additions.push({
+              uuid,
+              questionSetHeaderId,
+              origin,
+              insertAt,
+              answers,
+              createdAt: m.addedAt,
+              createdBy: undefined,
+            });
+          }
+        } catch (e) {
+          console.warn("Failed to build additions for CompletedJSON", e);
+        }
+
+        const completedJsonV1 = {
+          version: 1,
+          snapshot,
+          additions,
+          metaChoices: [],
+          answers: modelForSnapshot?.data ?? sender?.data ?? {},
         };
 
         const response = await fetch("/api/survey-instance", {
@@ -1148,7 +1298,7 @@ export default function SurveyInstanceDetailPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             id: instanceId,
-            completedJson: completedPayload,
+            completedJson: completedJsonV1,
             completedDate: new Date().toISOString(),
           }),
         });
@@ -1222,13 +1372,19 @@ export default function SurveyInstanceDetailPage() {
             return;
           }
 
-          const hasPossibleQuestionSets = possibleQuestionSetCountRef.current > 0;
-          const hasAddableQuestionSets = addableQuestionSetTemplatesRef.current.length > 0;
+          const hasPossibleQuestionSets =
+            possibleQuestionSetCountRef.current > 0;
+          const hasAddableQuestionSets =
+            addableQuestionSetTemplatesRef.current.length > 0;
 
-          navItem.visible = model.isCompleteButtonVisible && hasPossibleQuestionSets;
+          navItem.visible =
+            model.isCompleteButtonVisible && hasPossibleQuestionSets;
           navItem.enabled = hasAddableQuestionSets;
 
-          if (modelWithNav.navigationBar && typeof modelWithNav.navigationBar.update === "function") {
+          if (
+            modelWithNav.navigationBar &&
+            typeof modelWithNav.navigationBar.update === "function"
+          ) {
             modelWithNav.navigationBar.update();
           }
 
@@ -1254,10 +1410,13 @@ export default function SurveyInstanceDetailPage() {
             visible: false,
             enabled: addableQuestionSetTemplatesRef.current.length > 0,
             action: () => {
-              console.log("[survey-add] Opening add-questions modal from footer action", {
-                pageName: model.currentPage?.name,
-                pageNo: model.currentPageNo,
-              });
+              console.log(
+                "[survey-add] Opening add-questions modal from footer action",
+                {
+                  pageName: model.currentPage?.name,
+                  pageNo: model.currentPageNo,
+                },
+              );
               setShowAddQuestionsModal(true);
             },
           });
@@ -1294,7 +1453,8 @@ export default function SurveyInstanceDetailPage() {
 
     const hasPossibleQuestionSets = possibleQuestionSets.length > 0;
     const hasAddableQuestionSets = addableQuestionSetTemplates.length > 0;
-    navItem.visible = activeModel.isCompleteButtonVisible && hasPossibleQuestionSets;
+    navItem.visible =
+      activeModel.isCompleteButtonVisible && hasPossibleQuestionSets;
     navItem.enabled = hasAddableQuestionSets;
 
     if (navBar && typeof navBar.update === "function") {
@@ -1309,7 +1469,11 @@ export default function SurveyInstanceDetailPage() {
       visible: navItem.visible,
       enabled: navItem.enabled,
     });
-  }, [addableQuestionSetTemplates.length, possibleQuestionSets.length, surveyModel]);
+  }, [
+    addableQuestionSetTemplates.length,
+    possibleQuestionSets.length,
+    surveyModel,
+  ]);
 
   const handleSurveyRenderError = useCallback(
     (renderError: Error) => {
@@ -1326,7 +1490,10 @@ export default function SurveyInstanceDetailPage() {
             fallbackJson.pages.forEach((page: any) => {
               if (!Array.isArray(page?.elements)) return;
               page.elements.forEach((element: any) => {
-                if (element?.type === "panel" && Array.isArray(element?.elements)) {
+                if (
+                  element?.type === "panel" &&
+                  Array.isArray(element?.elements)
+                ) {
                   element.elements.forEach((subElement: any) => {
                     normalizeElementForSurvey(subElement, {
                       forceMetaDropdownToRadio: true,
@@ -1348,7 +1515,9 @@ export default function SurveyInstanceDetailPage() {
               surveyModelRef.current.onComplete.remove(handleSurveyComplete);
             } catch {}
             try {
-              surveyModelRef.current.onValueChanged.remove(handleMetaChoice as any);
+              surveyModelRef.current.onValueChanged.remove(
+                handleMetaChoice as any,
+              );
             } catch {}
             try {
               surveyModelRef.current.dispose();
@@ -1371,7 +1540,8 @@ export default function SurveyInstanceDetailPage() {
       }
 
       setError(
-        renderError?.message || "Failed to render survey due to invalid question data.",
+        renderError?.message ||
+          "Failed to render survey due to invalid question data.",
       );
     },
     [
@@ -1411,7 +1581,9 @@ export default function SurveyInstanceDetailPage() {
               possibleQuestionSets?: PossibleQuestionSetMetadata[];
             }
           | undefined;
-        const possibleFromSurvey = Array.isArray(surveyMeta?.possibleQuestionSets)
+        const possibleFromSurvey = Array.isArray(
+          surveyMeta?.possibleQuestionSets,
+        )
           ? surveyMeta.possibleQuestionSets
           : [];
         setPossibleQuestionSets(possibleFromSurvey);
@@ -1480,35 +1652,112 @@ export default function SurveyInstanceDetailPage() {
             }
           }
 
-          const restoredAddedQuestionSets = Array.isArray(
-            completedData?.__surveyMeta?.addedQuestionSets,
-          )
-            ? (completedData.__surveyMeta
-                .addedQuestionSets as AddedQuestionSetMetadata[])
-            : [];
+          // If we have a CompletedJSON v1 snapshot, prefer it as authoritative
+          if (completedData && typeof completedData === "object" && completedData.version === 1 && completedData.snapshot) {
+            try {
+              const snapshot = completedData.snapshot;
+              const modelFromSnapshot = new Model(snapshot);
+              // Debug: log snapshot data keys and model question names for troubleshooting
+              try {
+                const snapKeys = snapshot && snapshot.data ? Object.keys(snapshot.data) : [];
+                const qNames = (modelFromSnapshot.getAllQuestions ? modelFromSnapshot.getAllQuestions() : []).map((q: any) => q && q.name);
+                console.log("fetchInstance - Loaded CompletedJSON v1 snapshot keys:", snapKeys);
+                console.log("fetchInstance - Model questions from snapshot:", qNames);
+              } catch {}
+              // Ensure answers from snapshot or flat answers map are applied to the model
+              try {
+                if (snapshot && typeof snapshot === 'object' && snapshot.data) {
+                  try {
+                    modelFromSnapshot.data = snapshot.data;
+                  } catch {}
+                } else if (completedData.answers && typeof completedData.answers === 'object') {
+                  try {
+                    modelFromSnapshot.data = completedData.answers;
+                  } catch {}
+                }
+              } catch {}
+              // Also set each Question's runtime `value` property to ensure UI reflects values
+              try {
+                const applied = modelFromSnapshot.data || (completedData.answers && typeof completedData.answers === 'object' ? completedData.answers : {});
+                const allQ = modelFromSnapshot.getAllQuestions ? modelFromSnapshot.getAllQuestions() : [];
+                for (const q of allQ) {
+                  try {
+                    const name = q && q.name;
+                    if (!name) continue;
+                    if (Object.prototype.hasOwnProperty.call(applied, name)) {
+                      try {
+                        if (typeof modelFromSnapshot.setValue === 'function') {
+                          modelFromSnapshot.setValue(name, applied[name]);
+                        } else {
+                          q.value = applied[name];
+                        }
+                        // debug confirm
+                        try {
+                          const after = typeof modelFromSnapshot.getValue === 'function' ? modelFromSnapshot.getValue(name) : (q && q.value);
+                          console.log(`fetchInstance - applied value for ${String(name)} ->`, after);
+                        } catch {}
+                      } catch {}
+                    }
+                  } catch {}
+                }
+              } catch {}
+              applyModelUiSettings(modelFromSnapshot);
 
-          if (restoredAddedQuestionSets.length > 0) {
-            const possibleByKey = new Map(
-              possibleFromSurvey.map((set: PossibleQuestionSetMetadata) => [
-                set.key,
-                set,
-              ]),
-            );
+              // Map additions (if any) into AddedQuestionSetMetadata for UI tracking
+              const additions = Array.isArray(completedData.additions) ? completedData.additions : [];
+              const mappedAdded: AddedQuestionSetMetadata[] = additions.map((a: any) => ({
+                key: String(a.questionSetHeaderId ?? a.uuid ?? a.insertAt?.panelName ?? a.uuid),
+                title: a.title ?? "Added",
+                uid: a.uuid ?? a.insertAt?.panelName ?? String(a.questionSetHeaderId ?? Date.now()),
+                panelName: a.insertAt?.panelName ?? (a.uuid ? `panel_${a.uuid}` : ""),
+                typeToken: String(a.questionSetHeaderId ?? ""),
+                instanceToken: "na",
+                addedAt: a.createdAt ?? new Date().toISOString(),
+              }));
 
-            for (const restored of restoredAddedQuestionSets) {
-              const possibleSet = possibleByKey.get(restored.key);
-              if (!possibleSet) continue;
-
-              injectAddedQuestionSetIntoFinalPage(model, possibleSet, restored);
+              setAddedQuestionSets(mappedAdded);
+              surveyModelRef.current = modelFromSnapshot;
+              setSurveyModel(modelFromSnapshot);
+              setCompatRenderFallbackApplied(false);
+              // no extra injection needed since snapshot contains injected panels
+              // Ensure render updates and stop further processing to avoid overwriting the model
+              setSurveyViewVersion((v) => v + 1);
+              return;
+            } catch (e) {
+              console.warn("fetchInstance - failed to build model from CompletedJSON.snapshot", e);
             }
-          }
+          } else {
+            // Legacy or simple CompletedJSON - try to reuse previous behaviour
+            const restoredAddedQuestionSets = Array.isArray(
+              completedData?.__surveyMeta?.addedQuestionSets,
+            )
+              ? (completedData.__surveyMeta
+                  .addedQuestionSets as AddedQuestionSetMetadata[])
+              : [];
 
-          setAddedQuestionSets(restoredAddedQuestionSets);
+            if (restoredAddedQuestionSets.length > 0) {
+              const possibleByKey = new Map(
+                possibleFromSurvey.map((set: PossibleQuestionSetMetadata) => [
+                  set.key,
+                  set,
+                ]),
+              );
 
-          if (completedData && typeof completedData === "object") {
-            model.data = completedData;
-          } else if (surveyJson.data) {
-            model.data = surveyJson.data;
+              for (const restored of restoredAddedQuestionSets) {
+                const possibleSet = possibleByKey.get(restored.key);
+                if (!possibleSet) continue;
+
+                injectAddedQuestionSetIntoFinalPage(model, possibleSet, restored);
+              }
+            }
+
+            setAddedQuestionSets(restoredAddedQuestionSets);
+
+            if (completedData && typeof completedData === "object") {
+              model.data = completedData;
+            } else if (surveyJson.data) {
+              model.data = surveyJson.data;
+            }
           }
         } else if (surveyJson.data) {
           model.data = surveyJson.data;
@@ -1571,6 +1820,14 @@ export default function SurveyInstanceDetailPage() {
                   const m = qName.match(/^attributeTypeID_\d+_(.+)$/);
                   if (m && m[1]) originalKeyCandidates.push(m[1]);
                 }
+                // Also consider legacy keys that include an "instance_" prefix (e.g. instance_2_String01)
+                if (typeof qName === "string") {
+                  // look for any originalData key that ends with `_${qName}`
+                  const foundKey = Object.keys(originalData).find((k) =>
+                    k === qName || k.endsWith(`_${String(qName)}`) || k === String(qName),
+                  );
+                  if (foundKey) originalKeyCandidates.push(foundKey);
+                }
                 // Finally, add the qName itself as a fallback
                 originalKeyCandidates.push(qName);
 
@@ -1602,6 +1859,30 @@ export default function SurveyInstanceDetailPage() {
                 } catch {}
               }
             }
+            // Ensure runtime Question values are set so the UI displays values (use model.setValue when available)
+            try {
+              const applied = newData || {};
+              const allQ2 = model.getAllQuestions ? model.getAllQuestions() : [];
+              for (const q of allQ2) {
+                try {
+                  const name = q && q.name;
+                  if (!name) continue;
+                  if (Object.prototype.hasOwnProperty.call(applied, name)) {
+                    try {
+                      if (typeof model.setValue === 'function') {
+                        model.setValue(name, applied[name]);
+                      } else if (q) {
+                        q.value = applied[name];
+                      }
+                      try {
+                        const after = typeof model.getValue === 'function' ? model.getValue(name) : (q && q.value);
+                        console.log(`fetchInstance - remapped applied value for ${String(name)} ->`, after);
+                      } catch {}
+                    } catch {}
+                  }
+                } catch {}
+              }
+            } catch {}
           } catch (e) {
             console.warn(
               "fetchInstance - failed to remap completed data into injected questions",
@@ -1884,7 +2165,9 @@ export default function SurveyInstanceDetailPage() {
                       }}
                     >
                       <div>
-                        <div style={{ fontWeight: 700 }}>{questionSet.title}</div>
+                        <div style={{ fontWeight: 700 }}>
+                          {questionSet.title}
+                        </div>
                         <div
                           style={{
                             fontSize: "12px",
@@ -1928,7 +2211,8 @@ export default function SurveyInstanceDetailPage() {
                             addingQuestionSetKey === questionSet.key
                               ? "not-allowed"
                               : "pointer",
-                          opacity: addingQuestionSetKey === questionSet.key ? 0.7 : 1,
+                          opacity:
+                            addingQuestionSetKey === questionSet.key ? 0.7 : 1,
                         }}
                       >
                         {addingQuestionSetKey === questionSet.key

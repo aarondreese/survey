@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/database';
 import { parseRowJsonFields, parseRecordsetJsonFields } from '@/lib/parseDbJson';
+import validateCompletedJson from '@/lib/validateCompletedJson';
 import sql from 'mssql';
 
 // Increase body size limit for this route
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
           const containsMeta = typeof chunk === 'string' && chunk.indexOf('meta-contents') !== -1;
           console.log(`POST /api/survey-instance first chunk contains meta-contents: ${containsMeta}`);
           if (containsMeta) console.log('POST /api/survey-instance chunk excerpt:', chunk.substring(0, 1000));
-        } catch (e) {
+        } catch {
           console.warn('POST /api/survey-instance failed to inspect chunk for meta-contents');
         }
 
@@ -197,6 +198,15 @@ export async function PUT(request: NextRequest) {
         { error: 'Survey instance ID is required' },
         { status: 400 }
       );
+    }
+
+    // Validate CompletedJSON shape before storing
+    if (completedJson !== undefined && completedJson !== null) {
+      const validation = validateCompletedJson(completedJson);
+      if (!validation.valid) {
+        console.warn('PUT /api/survey-instance CompletedJSON validation failed', validation.errors);
+        return NextResponse.json({ error: 'Invalid CompletedJSON', details: validation.errors }, { status: 400 });
+      }
     }
 
     // Update survey instance with completed data
